@@ -1,6 +1,13 @@
-# GittyGo
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/gittygo_logo_darkbackground.svg">
+    <img src="assets/gittygo_logo_lightbackground.svg" alt="GittyGo logo" width="160">
+  </picture>
+</p>
 
-Git review for humans and agents.
+<h1 align="center">GittyGo</h1>
+
+<p align="center">Git review for humans and agents.</p>
 
 GittyGo opens a normal mouse-and-keyboard window for reviewing repository changes without launching an editor. It deliberately does not decide when it should be opened; that policy belongs to the user and their agent.
 

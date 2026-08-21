@@ -77,7 +77,7 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 |---|---|---|
 | Target platform defined | ✅ | First private alpha: macOS Apple Silicon. |
 | Product metadata | 🟡 | Product name, author, alpha version, bundle ID `io.github.mohammadbashiri.gittygo`, category, and artifact naming are configured; finalize copyright/license. |
-| Final app icon | ⬜ | Design/export `.icns` and required source sizes. |
+| Final app icon | 🟡 | Final light/dark logo SVGs are complete; compose the macOS app tile and export `.icns` plus required PNG sizes. |
 | Electron packaging configuration | 🟡 | Electron Builder produces an unsigned arm64 ASAR ZIP; finalize icon, entitlements/signing, and DMG verification. |
 | Packaged CLI wrapper | ✅ | Bundled `ELECTRON_RUN_AS_NODE` wrapper runs instructions/context and launches the packaged GUI without external Node/npm. |
 | Apple Developer signing | ✅ Deferred by decision | The free release intentionally makes no verified-developer claim; revisit only if future demand justifies Apple’s annual fee. |
