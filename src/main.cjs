@@ -148,6 +148,7 @@ function registerIpc() {
   });
   ipcMain.handle('repo:history', (_event, limit) => inspect(() => gitService.getHistory(repository, limit)));
   ipcMain.handle('repo:commit-details', (_event, hash) => inspect(() => gitService.getCommitDetails(repository, hash)));
+  ipcMain.handle('repo:commit-file-diff', (_event, hash, oldPath, filePath) => inspect(() => gitService.getCommitFileDiff(repository, hash, oldPath, filePath)));
   ipcMain.handle('repo:remotes', () => inspect(() => gitService.getRemotes(repository)));
   ipcMain.handle('repo:branches', () => inspect(() => gitService.getBranches(repository)));
   ipcMain.handle('repo:fetch', () => mutate(() => gitService.fetchRemote(repository), { type: 'fetchCompleted' }));

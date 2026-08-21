@@ -8,7 +8,7 @@ const ui = {
   selectionAction: $('#selection-action'), selectionCount: $('#selection-count'), applySelection: $('#apply-selection'),
 };
 
-const model = { repo: null, selected: null, diff: null, layout: 'unified', busy: false, view: 'changes', history: [], selectedCommit: null, selectedLines: null, selectionAnchor: null };
+const model = { repo: null, selected: null, diff: null, layout: 'unified', busy: false, view: 'changes', history: [], selectedCommit: null, commitDetail: null, selectedCommitFile: null, commitFileDiff: null, selectedLines: null, selectionAnchor: null };
 const escapeHtml = (value = '') => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const basename = (filePath) => filePath.split('/').pop();
 const dirname = (filePath) => { const parts = filePath.split('/'); parts.pop(); return parts.length ? `${parts.join('/')}/` : ''; };
@@ -79,21 +79,22 @@ function renderReview() {
 }
 function parseHunkRange(header) { const match = header.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/); return match ? { old: Number(match[1]), next: Number(match[3]) } : { old: 0, next: 0 }; }
 function splitPatch(patch) { const lines = patch.split('\n'); const first = lines.findIndex((line) => line.startsWith('@@ ')); return { header: first < 0 ? lines : lines.slice(0, first) }; }
-function renderDiff(patch, hunks, section, layout) {
+function renderDiff(patch, hunks, section, layout, readOnly = false) {
   const usefulHeader = splitPatch(patch).header.filter((line) => line.startsWith('diff ') || line.startsWith('--- ') || line.startsWith('+++ '));
-  return `<div class="diff ${layout}"><div class="file-header">${usefulHeader.map(escapeHtml).join('\n')}</div>${hunks.map((hunk) => renderHunk(hunk, section, layout)).join('')}</div>`;
+  return `<div class="diff ${layout}${readOnly ? ' read-only' : ''}"><div class="file-header">${usefulHeader.map(escapeHtml).join('\n')}</div>${hunks.map((hunk) => renderHunk(hunk, section, layout, readOnly)).join('')}</div>`;
 }
-function renderHunk(hunk, section, layout) {
+function renderHunk(hunk, section, layout, readOnly = false) {
   const action = section === 'staged' ? 'Unstage hunk' : 'Stage hunk';
-  return `<section class="hunk" data-hunk="${hunk.id}"><header class="hunk-header"><span>${escapeHtml(hunk.header)}</span><span class="hunk-actions"><button class="toggle-hunk">${action}</button>${section === 'unstaged' ? '<button class="discard-hunk">Discard</button>' : ''}</span></header>${layout === 'split' ? renderSplitLines(hunk) : renderUnifiedLines(hunk)}</section>`;
+  const actions = readOnly ? '' : `<span class="hunk-actions"><button class="toggle-hunk">${action}</button>${section === 'unstaged' ? '<button class="discard-hunk">Discard</button>' : ''}</span>`;
+  return `<section class="hunk" data-hunk="${hunk.id}"><header class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${actions}</header>${layout === 'split' ? renderSplitLines(hunk) : renderUnifiedLines(hunk, readOnly)}</section>`;
 }
-function renderUnifiedLines(hunk) {
+function renderUnifiedLines(hunk, readOnly = false) {
   const range = parseHunkRange(hunk.header); let oldLine = range.old; let newLine = range.next;
   return hunk.lines.map((line, index) => {
     if (line === '' && index === hunk.lines.length - 1) return '';
     const marker = line[0] || ' '; const metadata = marker === '\\'; const kind = marker === '+' ? 'add' : marker === '-' ? 'del' : 'context';
     const oldNumber = metadata || marker === '+' ? '' : oldLine++; const newNumber = metadata || marker === '-' ? '' : newLine++;
-    const selectable = marker === '+' || marker === '-'; const selected = model.selectedLines?.hunkId === hunk.id && model.selectedLines.indexes.has(index);
+    const selectable = !readOnly && (marker === '+' || marker === '-'); const selected = model.selectedLines?.hunkId === hunk.id && model.selectedLines.indexes.has(index);
     return `<div class="diff-row ${kind}${selectable ? ' selectable' : ''}${selected ? ' line-selected' : ''}" ${selectable ? `data-hunk="${hunk.id}" data-line="${index}" title="Click to select; Shift-click to select a range"` : ''}><span class="line-no">${oldNumber}</span><span class="line-no">${newNumber}</span><span class="marker">${metadata ? '' : escapeHtml(marker)}</span><span class="code">${escapeHtml(metadata ? line : line.slice(1))}</span></div>`;
   }).join('');
 }
@@ -181,8 +182,60 @@ function layoutHistory(commits) {
   });
 }
 function formatRelativeDate(value) { const days = Math.floor((Date.now() - new Date(value).getTime()) / 86400000); if (days <= 0) return 'today'; if (days === 1) return 'yesterday'; if (days < 30) return `${days} days ago`; return new Date(value).toLocaleDateString(); }
-ui.historyList.addEventListener('click', async (event) => { const row = event.target.closest('.commit-row'); if (!row) return; model.selectedCommit = row.dataset.commit; ui.historyList.querySelectorAll('.commit-row').forEach((item) => item.classList.toggle('selected', item === row)); ui.historyDetail.innerHTML = '<div class="empty-diff">Loading commit…</div>'; const detail = await unwrap(window.gitReview.commitDetails(model.selectedCommit)); if (detail) renderCommitDetail(detail); });
-function renderCommitDetail(commit) { ui.historyDetail.innerHTML = `<article><header class="commit-detail-header"><h2>${escapeHtml(commit.message.split('\n')[0])}</h2><div class="commit-detail-meta"><span>${escapeHtml(commit.author)} &lt;${escapeHtml(commit.email)}&gt;</span><span>${new Date(commit.date).toLocaleString()}</span><span>${commit.shortHash}</span></div>${commit.message.includes('\n') ? `<p>${escapeHtml(commit.message.split('\n').slice(1).join('\n').trim())}</p>` : ''}</header><pre class="commit-patch">${escapeHtml(commit.patch || 'No textual changes.')}</pre></article>`; }
+ui.historyList.addEventListener('click', async (event) => {
+  const row = event.target.closest('.commit-row'); if (!row) return;
+  model.selectedCommit = row.dataset.commit; model.commitDetail = null; model.selectedCommitFile = null; model.commitFileDiff = null;
+  ui.historyList.querySelectorAll('.commit-row').forEach((item) => item.classList.toggle('selected', item === row));
+  ui.historyDetail.innerHTML = '<div class="empty-diff">Loading commit…</div>';
+  const detail = await unwrap(window.gitReview.commitDetails(model.selectedCommit));
+  if (!detail || model.selectedCommit !== row.dataset.commit) return;
+  model.commitDetail = detail; model.selectedCommitFile = detail.files[0] || null; renderCommitDetail();
+  if (model.selectedCommitFile) await loadCommitFileDiff(model.selectedCommitFile);
+});
+
+function comparisonLabel(commit) {
+  if (commit.comparison.kind === 'root') return 'Initial commit · compared with empty tree';
+  if (commit.comparison.kind === 'first-parent') return `Merge commit · compared with first parent ${commit.comparison.base.slice(0, 7)}`;
+  return `Compared with parent ${commit.comparison.base.slice(0, 7)}`;
+}
+
+function fileDisplayPath(file) {
+  return file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
+}
+
+function renderCommitDetail() {
+  const commit = model.commitDetail; if (!commit) return;
+  const subject = commit.message.split('\n')[0]; const body = commit.message.split('\n').slice(1).join('\n').trim();
+  ui.historyDetail.innerHTML = `<article class="commit-detail"><header class="commit-detail-header"><h2>${escapeHtml(subject)}</h2><div class="commit-detail-meta"><span>${escapeHtml(commit.author)} &lt;${escapeHtml(commit.email)}&gt;</span><span>${new Date(commit.date).toLocaleString()}</span><span title="${commit.hash}">${commit.shortHash}</span></div>${body ? `<p>${escapeHtml(body)}</p>` : ''}<div class="comparison-label">${escapeHtml(comparisonLabel(commit))}</div><div class="commit-totals"><strong>${commit.totals.files}</strong> ${commit.totals.files === 1 ? 'file' : 'files'} changed <span class="stat-add">+${commit.totals.additions}</span> <span class="stat-del">−${commit.totals.deletions}</span>${commit.totals.binaries ? ` · ${commit.totals.binaries} binary` : ''}</div></header><div class="commit-browser"><aside class="commit-files">${commit.files.map((file, index) => `<button class="commit-file-row ${model.selectedCommitFile === file ? 'selected' : ''}" data-file-index="${index}"><span class="file-status ${escapeHtml(file.status)}">${escapeHtml(file.status)}</span><span class="commit-file-path" title="${escapeHtml(fileDisplayPath(file))}">${escapeHtml(fileDisplayPath(file))}</span><span class="file-stats">${file.binary ? 'Binary' : `<i class="stat-add">+${file.additions || 0}</i> <i class="stat-del">−${file.deletions || 0}</i>`}</span></button>`).join('') || '<div class="empty-sidebar">No file changes.</div>'}</aside><section class="commit-file-view"><header class="commit-file-toolbar">${model.selectedCommitFile ? `<strong>${escapeHtml(fileDisplayPath(model.selectedCommitFile))}</strong><div class="segmented"><button data-history-layout="unified" class="${model.layout === 'unified' ? 'active' : ''}">Unified</button><button data-history-layout="split" class="${model.layout === 'split' ? 'active' : ''}">Side by side</button></div>` : ''}</header><div id="commit-file-content" class="commit-file-content">${renderCommitFileContent()}</div></section></div></article>`;
+  bindCommitDetailEvents();
+}
+
+function renderCommitFileContent() {
+  if (!model.selectedCommitFile) return '<div class="empty-diff">No file selected.</div>';
+  if (!model.commitFileDiff) return '<div class="empty-diff">Loading file diff…</div>';
+  if (model.commitFileDiff.binary) return '<div class="empty-diff">Binary file changed. Textual diff is unavailable.</div>';
+  if (!model.commitFileDiff.patch) return '<div class="empty-diff">This change has no textual patch.</div>';
+  const warning = model.commitFileDiff.truncated ? '<div class="diff-warning">Diff is large and has been truncated.</div>' : '';
+  return `${warning}${renderDiff(model.commitFileDiff.patch, model.commitFileDiff.hunks, 'history', model.layout, true)}`;
+}
+
+function bindCommitDetailEvents() {
+  ui.historyDetail.querySelectorAll('.commit-file-row').forEach((row) => row.addEventListener('click', async () => {
+    const file = model.commitDetail.files[Number(row.dataset.fileIndex)];
+    if (!file || file === model.selectedCommitFile) return;
+    model.selectedCommitFile = file; model.commitFileDiff = null; renderCommitDetail(); await loadCommitFileDiff(file);
+  }));
+  ui.historyDetail.querySelectorAll('[data-history-layout]').forEach((button) => button.addEventListener('click', () => {
+    model.layout = button.dataset.historyLayout; renderCommitDetail();
+  }));
+}
+
+async function loadCommitFileDiff(file) {
+  const commitHash = model.selectedCommit; const requestedPath = file.path;
+  const result = await unwrap(window.gitReview.commitFileDiff(commitHash, file.oldPath, file.path));
+  if (!result || model.selectedCommit !== commitHash || model.selectedCommitFile?.path !== requestedPath) return;
+  model.commitFileDiff = result; renderCommitDetail();
+}
 
 function closePopovers() { ui.moreMenu.classList.add('hidden'); ui.branchPopover.classList.add('hidden'); }
 $('#more-button').addEventListener('click', (event) => { event.stopPropagation(); ui.moreMenu.classList.toggle('hidden'); ui.branchPopover.classList.add('hidden'); });

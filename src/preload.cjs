@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('gitReview', {
   commit: (message, amend) => ipcRenderer.invoke('repo:commit', message, amend),
   history: (limit) => ipcRenderer.invoke('repo:history', limit),
   commitDetails: (hash) => ipcRenderer.invoke('repo:commit-details', hash),
+  commitFileDiff: (hash, oldPath, filePath) => ipcRenderer.invoke('repo:commit-file-diff', hash, oldPath, filePath),
   remotes: () => ipcRenderer.invoke('repo:remotes'),
   branches: () => ipcRenderer.invoke('repo:branches'),
   fetch: () => ipcRenderer.invoke('repo:fetch'),

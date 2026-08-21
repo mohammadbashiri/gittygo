@@ -108,6 +108,37 @@ test('history and undo preserve committed changes', async (t) => {
   assert.match(command(repo, ['diff', '--cached']), /second commit/);
 });
 
+test('commit details provide a structured file inventory and lazy diffs', async (t) => {
+  const repo = createRepo();
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  const rootHash = command(repo, ['rev-parse', 'HEAD']).trim();
+  const root = await git.getCommitDetails(repo, rootHash);
+  assert.equal(root.comparison.kind, 'root');
+  assert.equal(root.files.length, 1);
+  assert.equal(root.files[0].status, 'A');
+
+  command(repo, ['mv', 'sample.txt', 'renamed.txt']);
+  fs.writeFileSync(path.join(repo, 'notes.txt'), 'new notes\n');
+  fs.writeFileSync(path.join(repo, 'image.bin'), Buffer.from([0, 1, 2, 3]));
+  command(repo, ['add', '.']);
+  command(repo, ['commit', '-qm', 'Rename and add files']);
+  const hash = command(repo, ['rev-parse', 'HEAD']).trim();
+  const details = await git.getCommitDetails(repo, hash);
+  assert.equal(details.comparison.kind, 'parent');
+  assert.equal(details.totals.files, 3);
+  const renamed = details.files.find((file) => file.status === 'R');
+  assert.equal(renamed.oldPath, 'sample.txt');
+  assert.equal(renamed.path, 'renamed.txt');
+  assert.equal(details.files.find((file) => file.path === 'image.bin').binary, true);
+
+  const textFile = details.files.find((file) => file.path === 'notes.txt');
+  const diff = await git.getCommitFileDiff(repo, hash, textFile.oldPath, textFile.path);
+  assert.equal(diff.binary, false);
+  assert.match(diff.patch, /\+new notes/);
+  assert.equal(diff.hunks.length, 1);
+});
+
 test('local branches and remotes can be managed', async (t) => {
   const repo = createRepo();
   t.after(() => fs.rmSync(repo, { recursive: true, force: true }));

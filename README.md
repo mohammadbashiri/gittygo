@@ -11,7 +11,7 @@ Git Review opens a normal mouse-and-keyboard window for reviewing repository cha
 - Stage/unstage files, hunks, and selected changed-line ranges
 - Discard files and hunks with native confirmation
 - Commit or amend staged changes and safely undo the last commit while preserving changes
-- Commit history with refs, metadata, and commit diffs
+- Commit history with refs, comparison context, change totals, structured file inventory, and lazy read-only visual diffs
 - Branch picker and branch creation
 - Fetch, guarded fast-forward pull, and guarded push
 - Add, inspect, and remove remotes

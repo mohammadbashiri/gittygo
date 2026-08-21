@@ -331,14 +331,100 @@ async function getHistory(repo, limit = 200) {
   });
 }
 
+const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+const MAX_HISTORY_PATCH_BYTES = 2 * 1024 * 1024;
+
+function parseNameStatus(raw) {
+  const tokens = raw.split('\0');
+  const files = [];
+  for (let index = 0; index < tokens.length;) {
+    const statusToken = tokens[index++];
+    if (!statusToken) continue;
+    const status = statusToken[0];
+    if (status === 'R' || status === 'C') {
+      files.push({ status, similarity: Number(statusToken.slice(1)) || null, oldPath: tokens[index++], path: tokens[index++] });
+    } else files.push({ status, oldPath: null, path: tokens[index++] });
+  }
+  return files;
+}
+
+function parseNumstat(raw) {
+  const tokens = raw.split('\0');
+  const stats = [];
+  for (let index = 0; index < tokens.length;) {
+    const token = tokens[index++];
+    if (!token) continue;
+    const firstTab = token.indexOf('\t');
+    const secondTab = token.indexOf('\t', firstTab + 1);
+    const additionsValue = token.slice(0, firstTab);
+    const deletionsValue = token.slice(firstTab + 1, secondTab);
+    const embeddedPath = token.slice(secondTab + 1);
+    let oldPath = null;
+    let filePath = embeddedPath;
+    if (!embeddedPath) {
+      oldPath = tokens[index++];
+      filePath = tokens[index++];
+    }
+    stats.push({
+      oldPath,
+      path: filePath,
+      additions: additionsValue === '-' ? null : Number(additionsValue),
+      deletions: deletionsValue === '-' ? null : Number(deletionsValue),
+      binary: additionsValue === '-' || deletionsValue === '-',
+    });
+  }
+  return stats;
+}
+
 async function getCommitDetails(repo, hash) {
   if (!/^[0-9a-f]{7,40}$/i.test(hash)) throw new GitError('Invalid commit identifier.');
-  const [metadata, patch] = await Promise.all([
-    git(repo, ['show', '-s', '--format=%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%B', hash]),
-    git(repo, ['show', '--format=', '--no-ext-diff', '--no-color', '--find-renames', '--unified=3', hash]),
+  const metadata = await git(repo, ['show', '-s', '--format=%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%B', hash]);
+  const [fullHash, shortHash, parentsValue, author, email, date, refsValue, ...message] = metadata.trim().split('\x1f');
+  const parents = parentsValue ? parentsValue.split(' ') : [];
+  const base = parents[0] || EMPTY_TREE_HASH;
+  const diffArgs = ['diff', '--no-ext-diff', '--no-color', '--find-renames', '--find-copies', base, fullHash];
+  const [nameStatus, numstat] = await Promise.all([
+    git(repo, [...diffArgs.slice(0, -2), '--name-status', '-z', base, fullHash]),
+    git(repo, [...diffArgs.slice(0, -2), '--numstat', '-z', base, fullHash]),
   ]);
-  const [fullHash, shortHash, parents, author, email, date, refs, ...message] = metadata.trim().split('\x1f');
-  return { hash: fullHash, shortHash, parents: parents ? parents.split(' ') : [], author, email, date, refs, message: message.join('\x1f').trim(), patch };
+  const files = parseNameStatus(nameStatus);
+  const stats = parseNumstat(numstat);
+  files.forEach((file, index) => Object.assign(file, stats[index] || { additions: 0, deletions: 0, binary: false }));
+  const totals = files.reduce((result, file) => {
+    result.additions += file.additions || 0;
+    result.deletions += file.deletions || 0;
+    if (file.binary) result.binaries += 1;
+    if (file.status === 'R') result.renames += 1;
+    return result;
+  }, { files: files.length, additions: 0, deletions: 0, binaries: 0, renames: 0 });
+  return {
+    hash: fullHash,
+    shortHash,
+    parents,
+    author,
+    email,
+    date,
+    refs: refsValue ? refsValue.split(', ').filter(Boolean) : [],
+    message: message.join('\x1f').trim(),
+    comparison: { kind: parents.length === 0 ? 'root' : parents.length > 1 ? 'first-parent' : 'parent', base },
+    files,
+    totals,
+  };
+}
+
+async function getCommitFileDiff(repo, hash, oldPath, filePath) {
+  const details = await getCommitDetails(repo, hash);
+  const file = details.files.find((item) => item.path === filePath && (item.oldPath || null) === (oldPath || null));
+  if (!file) throw new GitError('The selected file does not belong to this commit comparison.');
+  if (file.binary) return { patch: '', hunks: [], binary: true, truncated: false, file };
+  const paths = [...new Set([file.oldPath, file.path].filter(Boolean))];
+  let patch = await git(repo, ['diff', '--no-ext-diff', '--no-color', '--find-renames', '--unified=3', details.comparison.base, details.hash, '--', ...paths]);
+  let truncated = false;
+  if (Buffer.byteLength(patch) > MAX_HISTORY_PATCH_BYTES) {
+    patch = Buffer.from(patch).subarray(0, MAX_HISTORY_PATCH_BYTES).toString('utf8');
+    truncated = true;
+  }
+  return { patch, hunks: extractHunks(patch), binary: false, truncated, file };
 }
 
 async function getRemotes(repo) {
@@ -429,6 +515,9 @@ module.exports = {
   commit,
   getHistory,
   getCommitDetails,
+  getCommitFileDiff,
+  parseNameStatus,
+  parseNumstat,
   getRemotes,
   addRemote,
   removeRemote,
