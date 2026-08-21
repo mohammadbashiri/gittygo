@@ -8,10 +8,10 @@ const reviews = require('../src/review-store.cjs');
 const identity = 'a'.repeat(64);
 
 function setup(t) {
-  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-comments-'));
-  process.env.GIT_REVIEW_STATE_DIR = stateDirectory;
+  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-comments-'));
+  process.env.GITTYGO_STATE_DIR = stateDirectory;
   t.after(() => {
-    delete process.env.GIT_REVIEW_STATE_DIR;
+    delete process.env.GITTYGO_STATE_DIR;
     fs.rmSync(stateDirectory, { recursive: true, force: true });
   });
 }

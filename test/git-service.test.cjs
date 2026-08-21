@@ -11,7 +11,7 @@ function command(repo, args) {
 }
 
 function createRepo() {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-test-'));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-test-'));
   command(repo, ['init', '-q']);
   command(repo, ['config', 'user.name', 'Test User']);
   command(repo, ['config', 'user.email', 'test@example.com']);

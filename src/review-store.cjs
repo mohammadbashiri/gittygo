@@ -1,11 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
-const os = require('node:os');
 const path = require('node:path');
-
-function stateRoot() {
-  return path.resolve(process.env.GIT_REVIEW_STATE_DIR || path.join(os.homedir(), '.git-review'));
-}
+const { stateRoot } = require('./state-root.cjs');
 
 function reviewDirectory(repoIdentity) {
   if (!/^[a-f0-9]{64}$/.test(repoIdentity)) throw new Error('Invalid repository identity.');

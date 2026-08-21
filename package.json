@@ -1,11 +1,12 @@
 {
-  "name": "agentic-git-review",
+  "name": "gittygo",
+  "productName": "GittyGo",
   "version": "0.1.0",
-  "description": "A focused visual Git review tool that any coding agent can invoke.",
+  "description": "Git review for humans and agents.",
   "private": true,
   "main": "src/main.cjs",
   "bin": {
-    "git-review": "bin/git-review.cjs"
+    "gittygo": "bin/gittygo.cjs"
   },
   "scripts": {
     "start": "electron .",

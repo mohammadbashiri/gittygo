@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('gitReview', {
+contextBridge.exposeInMainWorld('gittyGo', {
   state: () => ipcRenderer.invoke('repo:state'),
   reviewState: () => ipcRenderer.invoke('review:state'),
   addReviewComment: (anchor, body) => ipcRenderer.invoke('review:add-comment', anchor, body),

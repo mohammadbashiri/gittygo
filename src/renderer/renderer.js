@@ -9,14 +9,15 @@ const ui = {
 };
 
 const model = { repo: null, selected: null, diff: null, layout: 'unified', busy: false, view: 'changes', history: [], selectedCommit: null, commitDetail: null, selectedCommitFile: null, commitFileDiff: null, selectedLines: null, selectionAnchor: null, selectionSide: null, review: { comments: [], openCommentCount: 0 }, commentComposer: null, diffRequestId: 0, diffLoadingKey: null, diffKey: null };
+const storedPreference = (key) => localStorage.getItem(`gittygo:${key}`) ?? localStorage.getItem(`git-review:${key}`);
 const sidebarState = {
   changes: {
-    collapsed: localStorage.getItem('git-review:sidebar:changes') === 'collapsed',
-    width: Number(localStorage.getItem('git-review:sidebar:changes:width')) || null,
+    collapsed: storedPreference('sidebar:changes') === 'collapsed',
+    width: Number(storedPreference('sidebar:changes:width')) || null,
   },
   history: {
-    collapsed: localStorage.getItem('git-review:sidebar:history') === 'collapsed',
-    width: Number(localStorage.getItem('git-review:sidebar:history:width')) || null,
+    collapsed: storedPreference('sidebar:history') === 'collapsed',
+    width: Number(storedPreference('sidebar:history:width')) || null,
   },
 };
 const escapeHtml = (value = '') => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -36,8 +37,8 @@ function displayedSidebarWidth(view) {
 }
 function persistSidebarState(view) {
   const state = sidebarState[view];
-  localStorage.setItem(`git-review:sidebar:${view}`, state.collapsed ? 'collapsed' : 'expanded');
-  if (state.width) localStorage.setItem(`git-review:sidebar:${view}:width`, String(Math.round(state.width)));
+  localStorage.setItem(`gittygo:sidebar:${view}`, state.collapsed ? 'collapsed' : 'expanded');
+  if (state.width) localStorage.setItem(`gittygo:sidebar:${view}:width`, String(Math.round(state.width)));
 }
 function applySidebarState(view) {
   const container = $(`#${view}-view`); const button = container.querySelector('.sidebar-toggle'); const state = sidebarState[view];
@@ -123,13 +124,13 @@ function renderFiles() {
     { title: 'Changes', files: model.repo.changes, action: 'stage', symbol: '+', actionLabel: 'Stage all changes' },
   ].filter((group) => group.files.length);
   if (!groups.length) { ui.groups.innerHTML = '<div class="empty-sidebar"><strong>Working tree clean</strong>There are no changes to review.</div>'; return; }
-  ui.groups.innerHTML = groups.map((group) => `<section class="group"><header class="group-heading"><span>${group.title}</span><span class="group-heading-actions"><span class="count">${group.files.length}</span><button class="group-action" data-group-action="${group.action}" title="${group.actionLabel}" aria-label="${group.actionLabel}">${group.symbol}</button></span></header>${group.files.map((file) => `<button class="file-row ${file.conflicted ? 'conflicted' : ''} ${model.selected && fileKey(file) === fileKey(model.selected) ? 'selected' : ''}" data-file-key="${escapeHtml(fileKey(file))}" title="${file.conflicted ? 'Conflict: resolve outside Git Review before staging' : escapeHtml(file.path)}"><span class="file-status ${escapeHtml(file.status)}">${escapeHtml(file.status)}</span><span class="file-path" title="${escapeHtml(file.path)}"><span class="file-dir">${escapeHtml(dirname(file.path))}</span>${escapeHtml(basename(file.path))}</span><span class="row-action" title="${file.section === 'staged' ? 'Unstage' : 'Stage'}">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length ? `<i class="comment-count">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length}</i>` : ''}${file.section === 'staged' ? '−' : '+'}</span></button>`).join('')}</section>`).join('');
+  ui.groups.innerHTML = groups.map((group) => `<section class="group"><header class="group-heading"><span>${group.title}</span><span class="group-heading-actions"><span class="count">${group.files.length}</span><button class="group-action" data-group-action="${group.action}" title="${group.actionLabel}" aria-label="${group.actionLabel}">${group.symbol}</button></span></header>${group.files.map((file) => `<button class="file-row ${file.conflicted ? 'conflicted' : ''} ${model.selected && fileKey(file) === fileKey(model.selected) ? 'selected' : ''}" data-file-key="${escapeHtml(fileKey(file))}" title="${file.conflicted ? 'Conflict: resolve outside GittyGo before staging' : escapeHtml(file.path)}"><span class="file-status ${escapeHtml(file.status)}">${escapeHtml(file.status)}</span><span class="file-path" title="${escapeHtml(file.path)}"><span class="file-dir">${escapeHtml(dirname(file.path))}</span>${escapeHtml(basename(file.path))}</span><span class="row-action" title="${file.section === 'staged' ? 'Unstage' : 'Stage'}">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length ? `<i class="comment-count">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length}</i>` : ''}${file.section === 'staged' ? '−' : '+'}</span></button>`).join('')}</section>`).join('');
 }
 
 ui.groups.addEventListener('click', async (event) => {
   const button = event.target.closest('.group-action'); if (!button || model.busy) return;
-  if (button.dataset.groupAction === 'stage') await unwrap(window.gitReview.stageAll(), 'All changes staged');
-  else await unwrap(window.gitReview.unstageAll(), 'All changes unstaged');
+  if (button.dataset.groupAction === 'stage') await unwrap(window.gittyGo.stageAll(), 'All changes staged');
+  else await unwrap(window.gittyGo.unstageAll(), 'All changes unstaged');
 });
 ui.groups.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return; const row = event.target.closest('.file-row'); if (!row || !model.repo) return;
@@ -169,7 +170,7 @@ async function loadDiff(showLoading) {
   if (model.diffLoadingKey === requestedStateKey) return;
   model.diffLoadingKey = requestedStateKey;
   if (showLoading) ui.content.innerHTML = '<div class="empty-diff">Loading diff…</div>';
-  const result = await unwrap(window.gitReview.diff(model.selected.path, model.selected.section));
+  const result = await unwrap(window.gittyGo.diff(model.selected.path, model.selected.section));
   if (requestId !== model.diffRequestId) return;
   model.diffLoadingKey = null;
   if (!result || !model.selected || requestedFileKey !== fileKey(model.selected) || requestedStateKey !== diffStateKey(model.selected)) return;
@@ -239,8 +240,8 @@ function renderSplitLines(hunk, readOnly = false) {
 }
 function bindHunkActions() {
   ui.content.querySelectorAll('.hunk').forEach((element) => { const hunk = model.diff.hunks[Number(element.dataset.hunk)];
-    element.querySelector('.toggle-hunk').addEventListener('click', async () => { const staged = model.selected.section === 'staged'; await unwrap(staged ? window.gitReview.unstageHunk(hunk.patch, model.selected.path) : window.gitReview.stageHunk(hunk.patch, model.selected.path), staged ? 'Hunk unstaged' : 'Hunk staged'); });
-    element.querySelector('.discard-hunk')?.addEventListener('click', () => unwrap(window.gitReview.discardHunk(hunk.patch, model.selected.path), 'Hunk discarded'));
+    element.querySelector('.toggle-hunk').addEventListener('click', async () => { const staged = model.selected.section === 'staged'; await unwrap(staged ? window.gittyGo.unstageHunk(hunk.patch, model.selected.path) : window.gittyGo.stageHunk(hunk.patch, model.selected.path), staged ? 'Hunk unstaged' : 'Hunk staged'); });
+    element.querySelector('.discard-hunk')?.addEventListener('click', () => unwrap(window.gittyGo.discardHunk(hunk.patch, model.selected.path), 'Hunk discarded'));
   });
 }
 
@@ -272,7 +273,7 @@ function updateSelectionUi() {
 }
 ui.applySelection.addEventListener('click', async () => {
   if (!model.selectedLines?.indexes.size || !selectedChangedLineCount()) return; const hunk = model.diff.hunks[model.selectedLines.hunkId];
-  const result = await unwrap(window.gitReview.stageSelected(hunk.patch, [...model.selectedLines.indexes], model.selected.section, model.selected.path), model.selected.section === 'staged' ? 'Selected lines unstaged' : 'Selected lines staged');
+  const result = await unwrap(window.gittyGo.stageSelected(hunk.patch, [...model.selectedLines.indexes], model.selected.section, model.selected.path), model.selected.section === 'staged' ? 'Selected lines unstaged' : 'Selected lines staged');
   if (result !== null) clearLineSelection();
 });
 ui.addComment.addEventListener('click', () => {
@@ -318,7 +319,7 @@ function bindReviewEvents() {
     composer.querySelector('[data-comment-action="save"]').addEventListener('click', async () => {
       const body = composer.querySelector('textarea').value.trim(); if (!body) return showToast('Write a comment first.', true);
       const editing = model.commentComposer.commentId;
-      const result = await unwrap(editing ? window.gitReview.editReviewComment(editing, body) : window.gitReview.addReviewComment(model.commentComposer.anchor, body));
+      const result = await unwrap(editing ? window.gittyGo.editReviewComment(editing, body) : window.gittyGo.addReviewComment(model.commentComposer.anchor, body));
       if (!result) return;
       model.review = { comments: result.comments, openCommentCount: result.openCommentCount };
       model.commentComposer = null; clearLineSelection(); renderFiles(); renderReview();
@@ -330,15 +331,15 @@ function bindReviewEvents() {
       const comment = allReviewComments().find((item) => item.id === commentId);
       model.commentComposer = { anchor: comment.anchor, commentId, body: comment.body }; renderReview(); return;
     }
-    const result = await unwrap(window.gitReview.resolveReviewComment(commentId));
+    const result = await unwrap(window.gittyGo.resolveReviewComment(commentId));
     if (result) model.review = { comments: result.comments, openCommentCount: result.openCommentCount };
     renderFiles(); renderReview();
   }));
 }
 
-async function toggleFileStage(file = model.selected) { if (!file || model.busy) return; await unwrap(file.section === 'staged' ? window.gitReview.unstageFile(file.path) : window.gitReview.stageFile(file.path), file.section === 'staged' ? 'File unstaged' : 'File staged'); }
+async function toggleFileStage(file = model.selected) { if (!file || model.busy) return; await unwrap(file.section === 'staged' ? window.gittyGo.unstageFile(file.path) : window.gittyGo.stageFile(file.path), file.section === 'staged' ? 'File unstaged' : 'File staged'); }
 ui.fileAction.addEventListener('click', () => toggleFileStage());
-ui.discardFile.addEventListener('click', () => model.selected && unwrap(window.gitReview.discardFile(model.selected.path), 'Changes discarded'));
+ui.discardFile.addEventListener('click', () => model.selected && unwrap(window.gittyGo.discardFile(model.selected.path), 'Changes discarded'));
 function updateCommitUi() {
   const staged = model.repo?.staged.length || 0; const amend = ui.amend.checked; const hasMessage = Boolean(ui.commitMessage.value.trim());
   ui.commitButton.disabled = amend ? !staged && !hasMessage : !staged || !hasMessage;
@@ -347,7 +348,7 @@ function updateCommitUi() {
 }
 ui.commitMessage.addEventListener('input', updateCommitUi); ui.amend.addEventListener('change', updateCommitUi);
 ui.commitMessage.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') ui.commitButton.click(); });
-ui.commitButton.addEventListener('click', async () => { if (ui.commitButton.disabled || model.busy) return; const wasAmend = ui.amend.checked; const hash = await unwrap(window.gitReview.commit(ui.commitMessage.value, wasAmend)); if (typeof hash === 'string') { ui.commitMessage.value = ''; ui.amend.checked = false; updateCommitUi(); showToast(`${wasAmend ? 'Amended' : 'Committed'} as ${hash}`); } });
+ui.commitButton.addEventListener('click', async () => { if (ui.commitButton.disabled || model.busy) return; const wasAmend = ui.amend.checked; const hash = await unwrap(window.gittyGo.commit(ui.commitMessage.value, wasAmend)); if (typeof hash === 'string') { ui.commitMessage.value = ''; ui.amend.checked = false; updateCommitUi(); showToast(`${wasAmend ? 'Amended' : 'Committed'} as ${hash}`); } });
 document.querySelectorAll('[data-layout]').forEach((button) => button.addEventListener('click', () => { model.layout = button.dataset.layout; clearLineSelection(); document.querySelectorAll('[data-layout]').forEach((item) => item.classList.toggle('active', item === button)); renderReview(); }));
 
 async function setView(view) {
@@ -357,7 +358,7 @@ async function setView(view) {
 }
 document.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
 async function loadHistory() {
-  ui.historyList.innerHTML = '<div class="empty-diff">Loading history…</div>'; const history = await unwrap(window.gitReview.history(200)); if (!history) return;
+  ui.historyList.innerHTML = '<div class="empty-diff">Loading history…</div>'; const history = await unwrap(window.gittyGo.history(200)); if (!history) return;
   model.history = layoutHistory(history); ui.historyCount.textContent = `${history.length} commits`;
   ui.historyList.innerHTML = history.length ? model.history.map((commit) => {
     const width = Math.max(1, commit.laneCount) * 16 + 12;
@@ -385,7 +386,7 @@ ui.historyList.addEventListener('click', async (event) => {
   model.selectedCommit = row.dataset.commit; model.commitDetail = null; model.selectedCommitFile = null; model.commitFileDiff = null;
   ui.historyList.querySelectorAll('.commit-row').forEach((item) => item.classList.toggle('selected', item === row));
   ui.historyDetail.innerHTML = '<div class="empty-diff">Loading commit…</div>';
-  const detail = await unwrap(window.gitReview.commitDetails(model.selectedCommit));
+  const detail = await unwrap(window.gittyGo.commitDetails(model.selectedCommit));
   if (!detail || model.selectedCommit !== row.dataset.commit) return;
   model.commitDetail = detail; model.selectedCommitFile = detail.files[0] || null; renderCommitDetail();
   if (model.selectedCommitFile) await loadCommitFileDiff(model.selectedCommitFile);
@@ -430,7 +431,7 @@ function bindCommitDetailEvents() {
 
 async function loadCommitFileDiff(file) {
   const commitHash = model.selectedCommit; const requestedPath = file.path;
-  const result = await unwrap(window.gitReview.commitFileDiff(commitHash, file.oldPath, file.path));
+  const result = await unwrap(window.gittyGo.commitFileDiff(commitHash, file.oldPath, file.path));
   if (!result || model.selectedCommit !== commitHash || model.selectedCommitFile?.path !== requestedPath) return;
   model.commitFileDiff = result; renderCommitDetail();
 }
@@ -439,29 +440,29 @@ function closePopovers() { ui.moreMenu.classList.add('hidden'); ui.branchPopover
 $('#more-button').addEventListener('click', (event) => { event.stopPropagation(); ui.moreMenu.classList.toggle('hidden'); ui.branchPopover.classList.add('hidden'); });
 $('#branch-button').addEventListener('click', async (event) => { event.stopPropagation(); ui.moreMenu.classList.add('hidden'); ui.branchPopover.classList.toggle('hidden'); if (!ui.branchPopover.classList.contains('hidden')) await loadBranches(); });
 $('#close-branches').addEventListener('click', closePopovers); document.addEventListener('pointerdown', (event) => { if (!event.target.closest('.popover') && !event.target.closest('#more-button') && !event.target.closest('#branch-button')) closePopovers(); });
-async function loadBranches() { const branches = await unwrap(window.gitReview.branches()); if (!branches) return; ui.branchList.innerHTML = branches.map((branch) => `<button class="branch-row ${branch.current ? 'current' : ''}" data-branch="${escapeHtml(branch.name)}"><span>${branch.current ? '✓ ' : ''}${escapeHtml(branch.name)}</span><span>${escapeHtml(branch.upstream || '')}</span></button>`).join(''); }
-ui.branchList.addEventListener('click', async (event) => { const row = event.target.closest('.branch-row'); if (!row || row.classList.contains('current')) return; const result = await unwrap(window.gitReview.switchBranch(row.dataset.branch), `Switched to ${row.dataset.branch}`); if (result !== null) closePopovers(); });
-$('#create-branch').addEventListener('click', async () => { const name = $('#new-branch-name').value.trim(); if (!name) return; const result = await unwrap(window.gitReview.createBranch(name), `Created ${name}`); if (result !== null) { $('#new-branch-name').value = ''; closePopovers(); } });
+async function loadBranches() { const branches = await unwrap(window.gittyGo.branches()); if (!branches) return; ui.branchList.innerHTML = branches.map((branch) => `<button class="branch-row ${branch.current ? 'current' : ''}" data-branch="${escapeHtml(branch.name)}"><span>${branch.current ? '✓ ' : ''}${escapeHtml(branch.name)}</span><span>${escapeHtml(branch.upstream || '')}</span></button>`).join(''); }
+ui.branchList.addEventListener('click', async (event) => { const row = event.target.closest('.branch-row'); if (!row || row.classList.contains('current')) return; const result = await unwrap(window.gittyGo.switchBranch(row.dataset.branch), `Switched to ${row.dataset.branch}`); if (result !== null) closePopovers(); });
+$('#create-branch').addEventListener('click', async () => { const name = $('#new-branch-name').value.trim(); if (!name) return; const result = await unwrap(window.gittyGo.createBranch(name), `Created ${name}`); if (result !== null) { $('#new-branch-name').value = ''; closePopovers(); } });
 
 ui.moreMenu.addEventListener('click', async (event) => { const command = event.target.dataset.command; if (!command) return; closePopovers();
-  if (command === 'fetch') await unwrap(window.gitReview.fetch(), 'Fetch complete');
-  if (command === 'pull') await unwrap(window.gitReview.pull(), 'Pull complete');
-  if (command === 'push') await unwrap(window.gitReview.push(), 'Push complete');
-  if (command === 'undo') { const result = await unwrap(window.gitReview.undoCommit()); if (typeof result === 'string') showToast(`Undid ${result}`); }
+  if (command === 'fetch') await unwrap(window.gittyGo.fetch(), 'Fetch complete');
+  if (command === 'pull') await unwrap(window.gittyGo.pull(), 'Pull complete');
+  if (command === 'push') await unwrap(window.gittyGo.push(), 'Push complete');
+  if (command === 'undo') { const result = await unwrap(window.gittyGo.undoCommit()); if (typeof result === 'string') showToast(`Undid ${result}`); }
   if (command === 'remotes') openRemotes();
 });
-$('#fetch-button').addEventListener('click', () => unwrap(window.gitReview.fetch(), 'Fetch complete'));
-async function openRemotes() { ui.modal.classList.remove('hidden'); ui.modalContent.innerHTML = '<div class="empty-sidebar">Loading remotes…</div>'; const remotes = await unwrap(window.gitReview.remotes()); if (!remotes) return;
+$('#fetch-button').addEventListener('click', () => unwrap(window.gittyGo.fetch(), 'Fetch complete'));
+async function openRemotes() { ui.modal.classList.remove('hidden'); ui.modalContent.innerHTML = '<div class="empty-sidebar">Loading remotes…</div>'; const remotes = await unwrap(window.gittyGo.remotes()); if (!remotes) return;
   ui.modalContent.innerHTML = `${remotes.length ? remotes.map((remote) => `<div class="remote-row"><strong>${escapeHtml(remote.name)}</strong><div><div class="remote-url">Fetch: ${escapeHtml(remote.fetchUrl)}</div><div class="remote-url">Push: ${escapeHtml(remote.pushUrl)}</div></div><button data-remove-remote="${escapeHtml(remote.name)}">Remove</button></div>`).join('') : '<div class="empty-sidebar">No remotes configured.</div>'}<div class="add-remote"><input id="remote-name" placeholder="Name" value="origin"/><input id="remote-url" placeholder="Remote URL"/><button id="add-remote">Add</button></div>`;
-  $('#add-remote').addEventListener('click', async () => { const result = await unwrap(window.gitReview.addRemote($('#remote-name').value, $('#remote-url').value), 'Remote added'); if (result !== null) openRemotes(); });
-  ui.modalContent.querySelectorAll('[data-remove-remote]').forEach((button) => button.addEventListener('click', async () => { const result = await unwrap(window.gitReview.removeRemote(button.dataset.removeRemote), 'Remote removed'); if (result !== null) openRemotes(); }));
+  $('#add-remote').addEventListener('click', async () => { const result = await unwrap(window.gittyGo.addRemote($('#remote-name').value, $('#remote-url').value), 'Remote added'); if (result !== null) openRemotes(); });
+  ui.modalContent.querySelectorAll('[data-remove-remote]').forEach((button) => button.addEventListener('click', async () => { const result = await unwrap(window.gittyGo.removeRemote(button.dataset.removeRemote), 'Remote removed'); if (result !== null) openRemotes(); }));
 }
 $('#close-modal').addEventListener('click', () => ui.modal.classList.add('hidden')); ui.modal.addEventListener('pointerdown', (event) => { if (event.target === ui.modal) ui.modal.classList.add('hidden'); });
 
 async function focusReviewComment(commentId) {
   let comment = allReviewComments().find((item) => item.id === commentId);
   if (!comment) {
-    const review = await unwrap(window.gitReview.reviewState());
+    const review = await unwrap(window.gittyGo.reviewState());
     if (review) model.review = review;
     comment = allReviewComments().find((item) => item.id === commentId);
   }
@@ -477,20 +478,20 @@ async function focusReviewComment(commentId) {
   setTimeout(() => thread.classList.remove('focused-comment'), 1800);
 }
 
-window.gitReview.onChanged(renderRepo);
-window.gitReview.onReviewChanged((review) => {
+window.gittyGo.onChanged(renderRepo);
+window.gittyGo.onReviewChanged((review) => {
   model.review = review; if (model.repo) renderFiles(); if (model.selected && model.diff) renderReview();
 });
-window.gitReview.onFocusComment(focusReviewComment);
-window.gitReview.onSetCommitMessage(async (message) => {
+window.gittyGo.onFocusComment(focusReviewComment);
+window.gittyGo.onSetCommitMessage(async (message) => {
   await setView('changes');
   ui.commitMessage.value = message; updateCommitUi();
   ui.commitMessage.focus(); ui.commitMessage.setSelectionRange(message.length, message.length);
   showToast('Commit message added for review.');
 });
-window.gitReview.onError((error) => showToast(error.message, true));
+window.gittyGo.onError((error) => showToast(error.message, true));
 (async function initialize() {
-  const [state, review] = await Promise.all([unwrap(window.gitReview.state()), unwrap(window.gitReview.reviewState())]);
+  const [state, review] = await Promise.all([unwrap(window.gittyGo.state()), unwrap(window.gittyGo.reviewState())]);
   if (review) model.review = review;
   if (state) renderRepo(state);
 })();

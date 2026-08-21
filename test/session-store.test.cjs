@@ -13,7 +13,7 @@ function command(repo, args) {
 }
 
 function createRepo() {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-session-repo-'));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-session-repo-'));
   command(repo, ['init', '-q']);
   command(repo, ['config', 'user.name', 'Test User']);
   command(repo, ['config', 'user.email', 'test@example.com']);
@@ -24,17 +24,17 @@ function createRepo() {
 }
 
 test('session is repository-bound and context uses ordered cursors', async (t) => {
-  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-state-'));
+  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-state-'));
   const repo = createRepo();
-  process.env.GIT_REVIEW_STATE_DIR = stateDirectory;
+  process.env.GITTYGO_STATE_DIR = stateDirectory;
   t.after(() => {
-    delete process.env.GIT_REVIEW_STATE_DIR;
+    delete process.env.GITTYGO_STATE_DIR;
     fs.rmSync(stateDirectory, { recursive: true, force: true });
     fs.rmSync(repo, { recursive: true, force: true });
   });
 
   const created = await sessions.createSession(repo);
-  assert.match(created.session.sessionId, /^gr-[a-f0-9]{32}$/);
+  assert.match(created.session.sessionId, /^gg-[a-f0-9]{32}$/);
   assert.equal(created.cursor, 0);
   assert.equal(created.snapshot.head.length > 0, true);
 
@@ -62,11 +62,11 @@ test('session is repository-bound and context uses ordered cursors', async (t) =
 });
 
 test('concurrent event writers allocate unique ordered sequences', async (t) => {
-  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-state-'));
+  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-state-'));
   const repo = createRepo();
-  process.env.GIT_REVIEW_STATE_DIR = stateDirectory;
+  process.env.GITTYGO_STATE_DIR = stateDirectory;
   t.after(() => {
-    delete process.env.GIT_REVIEW_STATE_DIR;
+    delete process.env.GITTYGO_STATE_DIR;
     fs.rmSync(stateDirectory, { recursive: true, force: true });
     fs.rmSync(repo, { recursive: true, force: true });
   });
@@ -79,11 +79,11 @@ test('concurrent event writers allocate unique ordered sequences', async (t) => 
 });
 
 test('open comments are immediately authoritative context alongside their event', async (t) => {
-  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-state-'));
+  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-state-'));
   const repo = createRepo();
-  process.env.GIT_REVIEW_STATE_DIR = stateDirectory;
+  process.env.GITTYGO_STATE_DIR = stateDirectory;
   t.after(() => {
-    delete process.env.GIT_REVIEW_STATE_DIR;
+    delete process.env.GITTYGO_STATE_DIR;
     fs.rmSync(stateDirectory, { recursive: true, force: true });
     fs.rmSync(repo, { recursive: true, force: true });
   });
@@ -104,11 +104,11 @@ test('open comments are immediately authoritative context alongside their event'
 });
 
 test('context detects repository state changed outside recorded UI events', async (t) => {
-  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-state-'));
+  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-state-'));
   const repo = createRepo();
-  process.env.GIT_REVIEW_STATE_DIR = stateDirectory;
+  process.env.GITTYGO_STATE_DIR = stateDirectory;
   t.after(() => {
-    delete process.env.GIT_REVIEW_STATE_DIR;
+    delete process.env.GITTYGO_STATE_DIR;
     fs.rmSync(stateDirectory, { recursive: true, force: true });
     fs.rmSync(repo, { recursive: true, force: true });
   });

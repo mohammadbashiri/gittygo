@@ -4,6 +4,8 @@ const gitService = require('./git-service.cjs');
 const sessionStore = require('./session-store.cjs');
 const reviewStore = require('./review-store.cjs');
 
+app.setName('GittyGo');
+
 let mainWindow;
 let repository;
 let sessionId;
@@ -290,7 +292,7 @@ async function createWindow() {
   sessionId = parseSessionArgument();
   if (sessionId) {
     const session = await sessionStore.loadSession(sessionId);
-    if (session.worktreeRoot !== repository) throw new Error('The supplied Git Review session belongs to a different worktree.');
+    if (session.worktreeRoot !== repository) throw new Error('The supplied GittyGo session belongs to a different worktree.');
     repositoryIdentity = session.repoIdentity;
   } else {
     const created = await sessionStore.createSession(repository);
@@ -298,7 +300,7 @@ async function createWindow() {
     repositoryIdentity = created.session.repoIdentity;
   }
   mainWindow = new BrowserWindow({
-    title: `Git Review — ${path.basename(repository)}`,
+    title: `GittyGo — ${path.basename(repository)}`,
     width: 1280,
     height: 820,
     minWidth: 860,
@@ -338,7 +340,7 @@ app.whenReady().then(async () => {
   try {
     await createWindow();
   } catch (error) {
-    dialog.showErrorBox('Could not open Git Review', error.message || String(error));
+    dialog.showErrorBox('Could not open GittyGo', error.message || String(error));
     app.quit();
   }
 });

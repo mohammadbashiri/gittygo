@@ -1,8 +1,8 @@
-# Git Review
+# GittyGo
 
-A focused visual Git review tool that any coding agent—or human—can invoke.
+Git review for humans and agents.
 
-Git Review opens a normal mouse-and-keyboard window for reviewing repository changes without launching an editor. It deliberately does not decide when it should be opened; that policy belongs to the user and their agent.
+GittyGo opens a normal mouse-and-keyboard window for reviewing repository changes without launching an editor. It deliberately does not decide when it should be opened; that policy belongs to the user and their agent.
 
 ## Current prototype
 
@@ -35,7 +35,7 @@ To install the non-blocking CLI locally:
 ```bash
 npm link
 cd /path/to/repository
-git-review open . --json
+gittygo open . --json
 ```
 
 The launcher opens the live window, immediately returns control to the caller, and prints a repository-bound session ID, cursor, authoritative initial snapshot, and generic agent instruction.
@@ -43,21 +43,22 @@ The launcher opens the live window, immediately returns control to the caller, a
 While the window remains active, any shell-capable agent can retrieve UI actions and current repository state without a harness-specific integration:
 
 ```bash
-git-review context --session <session-id> --after <cursor> --json
+gittygo context --session <session-id> --after <cursor> --json
 ```
 
-The response contains ordered semantic events, authoritative repository and review snapshots, and `nextCursor`. The agent retains `nextCursor` for its next query. Repeating a cursor is safe. Run `git-review instructions` to print the protocol instructions separately.
+The response contains ordered semantic events, authoritative repository and review snapshots, and `nextCursor`. The agent retains `nextCursor` for its next query. Repeating a cursor is safe. Run `gittygo instructions` to print the protocol instructions separately.
 
 Open review comments are delivered through the same context response. The user simply tells the agent when to inspect them; events are notifications rather than instructions to act. Agents can inspect or resolve comments without a harness-specific adapter:
 
 ```bash
-git-review review show --session <session-id> --json
-git-review review focus --session <session-id> --comment <comment-id> --json
-git-review review resolve --session <session-id> --comment <comment-id> --json
-git-review commit-message --session <session-id> --message "Proposed message" --json
+gittygo review show --session <session-id> --json
+gittygo review focus --session <session-id> --comment <comment-id> --json
+gittygo review resolve --session <session-id> --comment <comment-id> --json
+gittygo commit-message set --session <session-id> --message "Proposed message" --json
+gittygo commit-message clear --session <session-id> --json
 ```
 
-`git-review .` remains shorthand for `git-review open .`. Use `--wait` only when a blocking process is explicitly desired.
+`gittygo .` remains shorthand for `gittygo open .`. Use `--wait` only when a blocking process is explicitly desired.
 
 ## Product boundary
 
@@ -69,6 +70,6 @@ This repository currently builds one tool: visual Git review. It is not an IDE, 
 npm test
 ```
 
-Resolved comments leave the active review store; Git Review is a structured feedback queue rather than a permanent discussion archive. Resolution events remain available for the lifetime of the coordination session.
+Resolved comments leave the active review store; GittyGo is a structured feedback queue rather than a permanent discussion archive. Resolution events remain available for the lifetime of the coordination session.
 
 The renderer runs with Electron context isolation and sandboxing enabled. All repository mutations are handled in the main process, and destructive actions require user confirmation.
