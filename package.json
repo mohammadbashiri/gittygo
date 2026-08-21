@@ -1,0 +1,17 @@
+{
+  "name": "agentic-git-review",
+  "version": "0.1.0",
+  "description": "A focused visual Git review tool that any coding agent can invoke.",
+  "private": true,
+  "main": "src/main.cjs",
+  "bin": {
+    "git-review": "bin/git-review.cjs"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1"
+  }
+}

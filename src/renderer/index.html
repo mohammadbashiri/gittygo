@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'" />
+  <title>Git Review</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="titlebar">
+      <div class="titlebar-spacer"></div>
+      <div class="repo-identity">
+        <strong id="repo-name">Git Review</strong>
+        <span class="separator">/</span>
+        <span id="branch-name">—</span>
+      </div>
+      <div class="live-state"><span class="live-dot"></span><span id="updated-label">Live</span></div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar">
+        <div id="commit-panel" class="commit-panel">
+          <label for="commit-message">Commit message</label>
+          <textarea id="commit-message" rows="3" placeholder="Describe the staged changes…"></textarea>
+          <button id="commit-button" class="primary-button" disabled>Commit</button>
+        </div>
+        <div id="file-groups" class="file-groups"></div>
+      </aside>
+
+      <section class="review-pane">
+        <header id="file-toolbar" class="file-toolbar hidden">
+          <div class="selected-file">
+            <span id="selected-status" class="status-badge"></span>
+            <span id="selected-path"></span>
+          </div>
+          <div class="toolbar-actions">
+            <div class="segmented" aria-label="Diff layout">
+              <button data-layout="unified" class="active">Unified</button>
+              <button data-layout="split">Side by side</button>
+            </div>
+            <button id="file-action" class="quiet-button"></button>
+            <button id="discard-file" class="danger-button">Discard</button>
+          </div>
+        </header>
+        <div id="content" class="content"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>
