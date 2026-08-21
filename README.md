@@ -106,4 +106,8 @@ An unsigned Apple Silicon ZIP can be built for local verification:
 npm run dist:mac:unsigned
 ```
 
-The resulting artifact is unsigned and intentionally makes no Apple-verification or notarization claim. The free-distribution path uses the checksum-verifying installer above. The first public alpha still requires a final icon and license, complete packaged workflow testing, and clean-user installation testing.
+The resulting artifact is unsigned and intentionally makes no Apple-verification or notarization claim. The free-distribution path uses the checksum-verifying installer above. The first public alpha still requires a final icon, complete packaged workflow testing, and clean-user installation testing.
+
+## License and branding
+
+GittyGo's source code is available under the [MIT License](LICENSE). The [branding policy](BRANDING.md) allows truthful references and compatible forks while requiring modified distributions to avoid presenting themselves as official GittyGo releases.

@@ -23,6 +23,7 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 | Canonical portable agent skill | ✅ | `skills/gittygo/SKILL.md`; explicit invocation only, normal Git commands remain the agent interface. |
 | Versioning policy | ✅ | Package and planned first tag use `0.1.0-alpha.1` / `v0.1.0-alpha.1`. |
 | License selected and included | ✅ | MIT License, copyright © 2026 Mohammad Bashiri; package metadata declares MIT. |
+| Official branding protected | ✅ | `BRANDING.md` permits truthful references but requires modified distributions to avoid implying official status or endorsement. |
 
 ## 2. Core correctness and data safety
 
