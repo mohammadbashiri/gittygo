@@ -69,6 +69,66 @@ test('a single hunk can be staged and unstaged', async (t) => {
   assert.equal(state.changes.length, 1);
 });
 
+test('selected changed lines can be staged independently', async (t) => {
+  const repo = createRepo();
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  const file = path.join(repo, 'sample.txt');
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  lines[1] = 'changed line 2';
+  lines[2] = 'changed line 3';
+  fs.writeFileSync(file, lines.join('\n'));
+
+  const { patch } = await git.getDiff(repo, 'sample.txt', 'unstaged');
+  const hunk = git.extractHunks(patch)[0];
+  const selected = hunk.lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => line === '-line 2' || line === '+changed line 2')
+    .map(({ index }) => index);
+  await git.stageSelectedLines(repo, hunk.patch, selected, 'unstaged');
+
+  const staged = command(repo, ['diff', '--cached']);
+  const unstaged = command(repo, ['diff']);
+  assert.match(staged, /changed line 2/);
+  assert.doesNotMatch(staged, /changed line 3/);
+  assert.match(unstaged, /changed line 3/);
+});
+
+test('history and undo preserve committed changes', async (t) => {
+  const repo = createRepo();
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  fs.appendFileSync(path.join(repo, 'sample.txt'), 'second commit\n');
+  command(repo, ['add', 'sample.txt']);
+  command(repo, ['commit', '-qm', 'Second']);
+
+  const history = await git.getHistory(repo);
+  assert.equal(history[0].subject, 'Second');
+  assert.equal(history.length, 2);
+  await git.undoLastCommit(repo, true);
+  assert.equal(command(repo, ['log', '-1', '--pretty=%s']).trim(), 'Initial');
+  assert.match(command(repo, ['diff', '--cached']), /second commit/);
+});
+
+test('local branches and remotes can be managed', async (t) => {
+  const repo = createRepo();
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  await git.addRemote(repo, 'origin', 'https://example.com/project.git');
+  let remotes = await git.getRemotes(repo);
+  assert.equal(remotes[0].name, 'origin');
+  assert.equal(remotes[0].fetchUrl, 'https://example.com/project.git');
+  await git.removeRemote(repo, 'origin');
+  remotes = await git.getRemotes(repo);
+  assert.equal(remotes.length, 0);
+
+  const initialBranch = command(repo, ['branch', '--show-current']).trim();
+  await git.createBranch(repo, 'feature/test');
+  let branches = await git.getBranches(repo);
+  assert.equal(branches.find((branch) => branch.name === 'feature/test').current, true);
+  await git.switchBranch(repo, initialBranch);
+  branches = await git.getBranches(repo);
+  assert.equal(branches.find((branch) => branch.name === initialBranch).current, true);
+});
+
 test('commit returns the new short hash', async (t) => {
   const repo = createRepo();
   t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
