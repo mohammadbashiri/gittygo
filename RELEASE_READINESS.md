@@ -1,6 +1,6 @@
 # GittyGo Release Readiness
 
-Living checklist for the first private macOS alpha and eventual public developer preview.
+Living checklist for the first unsigned macOS alpha and eventual public developer preview.
 
 **Status legend:** ✅ Done · 🟡 Partial / needs verification · ⬜ Not started · 🔴 Blocker
 
@@ -9,7 +9,7 @@ Living checklist for the first private macOS alpha and eventual public developer
 | Target | Status | Reason |
 |---|---|---|
 | Local development use | ✅ Ready | Core workflows work; 21 automated tests pass. |
-| Private signed `0.1.0-alpha.1` | 🔴 Not ready | Final icon/license, installer, signing/notarization, and clean-install testing remain. |
+| Unsigned `0.1.0-alpha.1` GitHub alpha | 🔴 Not ready | Final icon/license, GitHub publication, complete packaged smoke testing, and clean-user testing remain. |
 | Public developer preview | 🔴 Not ready | Private-alpha gates plus broader security, compatibility, documentation, and tester feedback remain. |
 
 ## 1. Product foundation
@@ -49,11 +49,11 @@ Living checklist for the first private macOS alpha and eventual public developer
 | Repository strings/comments rendered safely | ✅ | Focused audit found escaped renderer output and explicit untrusted-data agent instructions; no direct HTML injection route found. |
 | Git argument/command-injection resistance | 🟡 | Focused audit found argument-array execution and branch validation with no shell-injection route; add hostile-input regression tests. |
 | Path traversal and symlink safety | 🟡 | Discard logic contains path checks; perform complete filesystem-boundary audit and tests. |
-| Installer supply-chain integrity | ⬜ | Require HTTPS release URLs, SHA-256 verification, temporary-directory safety, and fail-closed behavior. |
+| Installer supply-chain integrity | 🟡 | HTTPS-only downloads, SHA-256 verification, private temporary extraction, and fail-closed checks are implemented; validate against an actual GitHub Release. |
 | Dependency vulnerability audit | ✅ | `npm audit` reports zero vulnerabilities. |
 | Dependency license audit | 🟡 | Production tree is MIT/ISC only (`proper-lockfile`, `graceful-fs`, `retry`, `signal-exit`); preserve notices and audit packaged Electron licenses. |
 | Telemetry/network behavior | ✅ | No telemetry or application analytics; trusted-repository/network boundary is documented in README. |
-| Signing credentials protected | ⬜ | Define local/CI secret handling before importing Developer ID credentials. |
+| Signing credentials protected | ✅ Not applicable | No Apple signing credentials are used for the chosen unsigned release path. |
 
 ## 4. Git behavior test matrix
 
@@ -79,22 +79,22 @@ Living checklist for the first private macOS alpha and eventual public developer
 | Final app icon | ⬜ | Design/export `.icns` and required source sizes. |
 | Electron packaging configuration | 🟡 | Electron Builder produces an unsigned arm64 ASAR ZIP; finalize icon, entitlements/signing, and DMG verification. |
 | Packaged CLI wrapper | ✅ | Bundled `ELECTRON_RUN_AS_NODE` wrapper runs instructions/context and launches the packaged GUI without external Node/npm. |
-| Signed hardened-runtime build | ⬜ | Configure Developer ID Application signing and minimal entitlements. |
-| Apple notarization and stapling | ⬜ | Configure and validate notarization workflow. |
+| Apple Developer signing | ✅ Deferred by decision | The free release intentionally makes no verified-developer claim; revisit only if future demand justifies Apple’s annual fee. |
+| Apple notarization and stapling | ✅ Deferred by decision | Not part of the unsigned GitHub distribution path. |
 | Packaged smoke tests | 🟡 | Unsigned packaged app launch plus CLI `instructions`, `open`, and `context` pass; remaining review/mutation/migration flows need packaged testing. |
-| Clean-user install | ⬜ | Test on a fresh macOS user without Node/npm or prior GittyGo state. |
-| Uninstall behavior | ⬜ | Define removal of app/CLI while preserving or optionally removing user state. |
+| Clean-user install | 🟡 | Isolated-home install/update/CLI test passes without using external Node/npm; still test through a genuinely fresh macOS account. |
+| Uninstall behavior | ✅ | `gittygo-uninstall` removes app/CLI and unchanged detected skills while preserving `~/.gittygo`; `--purge` explicitly removes state. |
 
 ## 6. Distribution
 
 | Check | Status | Evidence / next action |
 |---|---|---|
 | Private GitHub repository | 🔴 | GitHub CLI token is invalid; renew authentication, create `mohammadbashiri/gittygo`, and push. |
-| Private GitHub Release | ⬜ | Publish signed `v0.1.0-alpha.1` with checksums after packaging gates pass. |
+| GitHub Release | ⬜ | Publish unsigned `v0.1.0-alpha.1` ZIP plus `SHA256SUMS` only after remaining gates pass. |
 | Source-install fallback | 🟡 | `npm install`, `npm link`, and `gittygo .` work; optional source installer can wait. |
-| One-command packaged installer | ⬜ | Install to `~/Applications`, install CLI to user PATH, verify checksum, support rerun/update, and avoid `sudo`. |
-| Agent-skill installation | ⬜ | Installer should copy canonical skill only into detected/supported harness locations and report changes. |
-| Update path | ⬜ | First version may use installer rerun; document behavior before release. |
+| One-command packaged installer | ✅ Locally validated | `scripts/install.sh` verifies SHA-256, installs under `~/Applications`/`~/.local/bin`, avoids `sudo`, and rolls forward by rerunning. Remote URL awaits GitHub release. |
+| Agent-skill installation | ✅ | Installer copies the bundled canonical skill into detected Pi/Claude/Codex skill roots and reports each change. |
+| Update path | ✅ | Rerunning the installer stages and replaces the app while preserving local state. |
 | Website/domain | ✅ Not required | GitHub repository, Releases, and raw installer URL are sufficient. |
 | Docker distribution | ✅ Deferred | Not appropriate as primary native-GUI installation path. |
 
@@ -103,7 +103,7 @@ Living checklist for the first private macOS alpha and eventual public developer
 | Check | Status | Evidence / next action |
 |---|---|---|
 | README accurately describes current source workflow | ✅ | Renamed and tested commands documented. |
-| Installation documentation | ⬜ | Add after packaged installer behavior is finalized. |
+| Installation documentation | 🟡 | README documents planned one-command install, update-by-rerun, and state-preserving/purge uninstall; verify final public URLs after release. |
 | Security/privacy statement | 🟡 | README documents trusted repositories, Git execution boundary, local state, permissions, no telemetry, and user-initiated network activity; add reporting channel before public preview. |
 | Known limitations | ⬜ | Document developer-preview boundaries, especially large diffs and unsupported conflict resolution. |
 | Troubleshooting and recovery | ⬜ | Cover startup, Git errors, state reset, update, and uninstall. |

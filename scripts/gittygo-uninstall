@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+APP="${GITTYGO_INSTALL_APP:-$HOME/Applications/GittyGo.app}"
+BIN_DIRECTORY="${GITTYGO_BIN_DIR:-$HOME/.local/bin}"
+DATA_DIRECTORY="${GITTYGO_INSTALL_DATA:-$HOME/.local/share/gittygo}"
+PURGE=0
+[ "${1:-}" = "--purge" ] && PURGE=1
+
+SKILL_SOURCE="$APP/Contents/Resources/skills/gittygo/SKILL.md"
+remove_unchanged_skill() {
+  root="$1"
+  destination="$root/gittygo/SKILL.md"
+  if [ -f "$SKILL_SOURCE" ] && [ -f "$destination" ] && cmp -s "$SKILL_SOURCE" "$destination"; then
+    rm -f "$destination"
+    rmdir "$root/gittygo" 2>/dev/null || true
+    echo "Removed agent skill: $destination"
+  fi
+}
+remove_unchanged_skill "${PI_AGENT_HOME:-$HOME/.pi/agent}/skills"
+remove_unchanged_skill "${CLAUDE_HOME:-$HOME/.claude}/skills"
+remove_unchanged_skill "${CODEX_HOME:-$HOME/.codex}/skills"
+
+rm -rf "$APP"
+rm -f "$BIN_DIRECTORY/gittygo" "$BIN_DIRECTORY/gittygo-uninstall"
+rm -rf "$DATA_DIRECTORY"
+
+if [ "$PURGE" = "1" ]; then
+  rm -rf "${GITTYGO_STATE_DIR:-$HOME/.gittygo}"
+  echo "Removed GittyGo and its local state."
+else
+  echo "Removed GittyGo. Local review state remains in ~/.gittygo."
+  echo "Run with --purge to remove that state as well."
+fi

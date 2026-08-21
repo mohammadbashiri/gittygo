@@ -21,6 +21,24 @@ GittyGo opens a normal mouse-and-keyboard window for reviewing repository change
 - Automatic refresh while an agent edits the repository
 - System light/dark appearance
 
+## One-command installation
+
+After the first GitHub Release is published, Apple Silicon macOS users can install or update GittyGo with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mohammadbashiri/gittygo/main/scripts/install.sh | sh
+```
+
+The installer verifies the release checksum, installs the unsigned `GittyGo.app` under `~/Applications`, installs `gittygo` under `~/.local/bin`, and copies the canonical skill into detected agent skill directories. It does not require Node.js or npm. The build is not Apple-verified or notarized.
+
+Uninstall while preserving local review state:
+
+```bash
+gittygo-uninstall
+```
+
+Use `gittygo-uninstall --purge` only when the local `~/.gittygo` state should also be deleted.
+
 ## Run locally
 
 Requires Node.js 22+ and Git.
@@ -88,4 +106,4 @@ An unsigned Apple Silicon ZIP can be built for local verification:
 npm run dist:mac:unsigned
 ```
 
-The resulting artifact is intentionally not a distributable release. A private alpha still requires a final icon and license, Developer ID signing, notarization, stapling, and clean-user installation testing.
+The resulting artifact is unsigned and intentionally makes no Apple-verification or notarization claim. The free-distribution path uses the checksum-verifying installer above. The first public alpha still requires a final icon and license, complete packaged workflow testing, and clean-user installation testing.

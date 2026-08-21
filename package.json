@@ -39,6 +39,14 @@
       {
         "from": "scripts/gittygo",
         "to": "bin/gittygo"
+      },
+      {
+        "from": "scripts/gittygo-uninstall",
+        "to": "bin/gittygo-uninstall"
+      },
+      {
+        "from": "skills/gittygo",
+        "to": "skills/gittygo"
       }
     ],
     "artifactName": "GittyGo-${version}-${arch}.${ext}",
