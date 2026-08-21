@@ -61,6 +61,23 @@ test('session is repository-bound and context uses ordered cursors', async (t) =
   assert.equal(empty.nextCursor, 3);
 });
 
+test('concurrent event writers allocate unique ordered sequences', async (t) => {
+  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-state-'));
+  const repo = createRepo();
+  process.env.GIT_REVIEW_STATE_DIR = stateDirectory;
+  t.after(() => {
+    delete process.env.GIT_REVIEW_STATE_DIR;
+    fs.rmSync(stateDirectory, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  const created = await sessions.createSession(repo);
+  await Promise.all(Array.from({ length: 20 }, (_, index) => sessions.appendEvent(created.session.sessionId, { type: 'testEvent', payload: { index } })));
+  const context = await sessions.getContext(created.session.sessionId, 0);
+  assert.deepEqual(context.events.map((event) => event.seq), Array.from({ length: 20 }, (_, index) => index + 1));
+  assert.equal(new Set(context.events.map((event) => event.eventId)).size, 20);
+});
+
 test('open comments are immediately authoritative context alongside their event', async (t) => {
   const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-state-'));
   const repo = createRepo();

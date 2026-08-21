@@ -21,6 +21,30 @@ function sessionFile(sessionId) { return path.join(sessionDirectory(sessionId), 
 function eventsFile(sessionId) { return path.join(sessionDirectory(sessionId), 'events.jsonl'); }
 function focusRequestFile(sessionId) { return path.join(sessionDirectory(sessionId), 'focus-request.json'); }
 function commitMessageRequestFile(sessionId) { return path.join(sessionDirectory(sessionId), 'commit-message-request.json'); }
+function sessionLockFile(sessionId) { return path.join(sessionDirectory(sessionId), 'session.lock'); }
+
+const LOCK_TIMEOUT_MS = 3000;
+const STALE_LOCK_MS = 30000;
+
+async function withSessionLock(sessionId, action) {
+  const lockPath = sessionLockFile(sessionId); const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  while (true) {
+    let handle;
+    try {
+      handle = await fs.open(lockPath, 'wx', 0o600);
+      await handle.writeFile(`${process.pid}\n${Date.now()}\n`);
+      try { return await action(); }
+      finally { await handle.close(); await fs.rm(lockPath, { force: true }); }
+    } catch (error) {
+      if (handle) await handle.close().catch(() => {});
+      if (error.code !== 'EEXIST') throw error;
+      const stat = await fs.stat(lockPath).catch(() => null);
+      if (stat && Date.now() - stat.mtimeMs > STALE_LOCK_MS) { await fs.rm(lockPath, { force: true }); continue; }
+      if (Date.now() >= deadline) throw new Error('Timed out waiting for the Git Review session lock.');
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+  }
+}
 
 async function writeJsonSecure(filePath, value) {
   const temporary = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
@@ -105,29 +129,31 @@ async function loadSession(sessionId) {
 }
 
 async function appendEvent(sessionId, event, state) {
-  const session = await loadSession(sessionId);
-  const snapshot = snapshotFromState(state || await gitService.getState(session.worktreeRoot));
-  const record = {
-    seq: session.nextSequence,
-    eventId: crypto.randomUUID(),
-    time: new Date().toISOString(),
-    actor: 'user-ui',
-    type: event.type,
-    payload: event.payload || {},
-    resultingState: {
-      branch: snapshot.branch,
-      head: snapshot.head,
-      stagedCount: snapshot.staged.length,
-      unstagedCount: snapshot.unstaged.length,
-      conflicted: snapshot.conflicted,
-      fingerprint: snapshot.fingerprint,
-    },
-  };
-  await fs.appendFile(eventsFile(sessionId), `${JSON.stringify(record)}\n`, { mode: 0o600 });
-  session.nextSequence += 1;
-  session.lastEventFingerprint = snapshot.fingerprint;
-  await writeJsonSecure(sessionFile(sessionId), session);
-  return record;
+  return withSessionLock(sessionId, async () => {
+    const session = await loadSession(sessionId);
+    const snapshot = snapshotFromState(state || await gitService.getState(session.worktreeRoot));
+    const record = {
+      seq: session.nextSequence,
+      eventId: crypto.randomUUID(),
+      time: new Date().toISOString(),
+      actor: event.actor || 'user-ui',
+      type: event.type,
+      payload: event.payload || {},
+      resultingState: {
+        branch: snapshot.branch,
+        head: snapshot.head,
+        stagedCount: snapshot.staged.length,
+        unstagedCount: snapshot.unstaged.length,
+        conflicted: snapshot.conflicted,
+        fingerprint: snapshot.fingerprint,
+      },
+    };
+    await fs.appendFile(eventsFile(sessionId), `${JSON.stringify(record)}\n`, { mode: 0o600 });
+    session.nextSequence += 1;
+    session.lastEventFingerprint = snapshot.fingerprint;
+    await writeJsonSecure(sessionFile(sessionId), session);
+    return record;
+  });
 }
 
 async function requestCommentFocus(sessionId, commentId) {

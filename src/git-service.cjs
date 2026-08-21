@@ -4,6 +4,9 @@ const path = require('node:path');
 const { promisify } = require('node:util');
 
 const execFileAsync = promisify(execFile);
+const gitDirectoryCache = new Map();
+const commitDetailsCache = new Map();
+const MAX_COMMIT_DETAILS_CACHE = 32;
 
 class GitError extends Error {
   constructor(message, details = '') {
@@ -118,13 +121,18 @@ async function getState(repo) {
   ]);
 
   const files = parseStatus(rawStatus);
+  const worktreeVersions = new Map(await Promise.all(files.filter((file) => file.unstaged).map(async (file) => {
+    const stat = await fs.stat(path.join(repo, file.path)).catch(() => null);
+    return [file.path, stat ? { worktreeMtimeMs: stat.mtimeMs, worktreeCtimeMs: stat.ctimeMs, worktreeSize: stat.size } : { worktreeMissing: true }];
+  })));
   const staged = files
     .filter((file) => file.staged)
-    .map((file) => ({ ...file, section: 'staged', status: displayStatus(file, true) }));
+    .map((file) => ({ ...file, ...(worktreeVersions.get(file.path) || {}), section: 'staged', status: displayStatus(file, true) }));
   const changes = files
     .filter((file) => file.unstaged)
-    .map((file) => ({ ...file, section: 'unstaged', status: displayStatus(file, false) }));
+    .map((file) => ({ ...file, ...(worktreeVersions.get(file.path) || {}), section: 'unstaged', status: displayStatus(file, false) }));
 
+  const indexStat = await fs.stat(path.join(gitDirectoryCache.get(repo), 'index')).catch(() => null);
   let ahead = 0;
   let behind = 0;
   if (upstream.trim()) {
@@ -142,6 +150,8 @@ async function getState(repo) {
     ahead,
     behind,
     operation,
+    indexMtimeMs: indexStat?.mtimeMs || 0,
+    indexSize: indexStat?.size || 0,
     conflicted: files.some((file) => file.indexStatus === 'U' || file.worktreeStatus === 'U' || ['AA', 'DD'].includes(`${file.indexStatus}${file.worktreeStatus}`)),
     staged,
     changes,
@@ -149,8 +159,12 @@ async function getState(repo) {
 }
 
 async function getOperationState(repo) {
-  const gitDir = (await git(repo, ['rev-parse', '--git-dir'])).trim();
-  const absoluteGitDir = path.resolve(repo, gitDir);
+  let absoluteGitDir = gitDirectoryCache.get(repo);
+  if (!absoluteGitDir) {
+    const gitDir = (await git(repo, ['rev-parse', '--git-dir'])).trim();
+    absoluteGitDir = path.resolve(repo, gitDir);
+    gitDirectoryCache.set(repo, absoluteGitDir);
+  }
   const exists = async (name) => Boolean(await fs.stat(path.join(absoluteGitDir, name)).catch(() => null));
   if (await exists('MERGE_HEAD')) return 'merge';
   if (await exists('CHERRY_PICK_HEAD')) return 'cherry-pick';
@@ -389,6 +403,12 @@ function parseNumstat(raw) {
 
 async function getCommitDetails(repo, hash) {
   if (!/^[0-9a-f]{7,40}$/i.test(hash)) throw new GitError('Invalid commit identifier.');
+  const requestedKey = `${repo}\0${hash.toLowerCase()}`;
+  if (commitDetailsCache.has(requestedKey)) {
+    const cached = commitDetailsCache.get(requestedKey);
+    commitDetailsCache.delete(requestedKey); commitDetailsCache.set(requestedKey, cached);
+    return cached;
+  }
   const metadata = await git(repo, ['show', '-s', '--format=%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%B', hash]);
   const [fullHash, shortHash, parentsValue, author, email, date, refsValue, ...message] = metadata.trim().split('\x1f');
   const parents = parentsValue ? parentsValue.split(' ') : [];
@@ -408,7 +428,7 @@ async function getCommitDetails(repo, hash) {
     if (file.status === 'R') result.renames += 1;
     return result;
   }, { files: files.length, additions: 0, deletions: 0, binaries: 0, renames: 0 });
-  return {
+  const details = {
     hash: fullHash,
     shortHash,
     parents,
@@ -421,6 +441,9 @@ async function getCommitDetails(repo, hash) {
     files,
     totals,
   };
+  for (const key of new Set([requestedKey, `${repo}\0${fullHash.toLowerCase()}`, `${repo}\0${shortHash.toLowerCase()}`])) commitDetailsCache.set(key, details);
+  while (commitDetailsCache.size > MAX_COMMIT_DETAILS_CACHE) commitDetailsCache.delete(commitDetailsCache.keys().next().value);
+  return details;
 }
 
 async function getCommitFileDiff(repo, hash, oldPath, filePath) {

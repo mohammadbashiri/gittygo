@@ -8,7 +8,7 @@ const ui = {
   selectionAction: $('#selection-action'), selectionCount: $('#selection-count'), applySelection: $('#apply-selection'), addComment: $('#add-comment'),
 };
 
-const model = { repo: null, selected: null, diff: null, layout: 'unified', busy: false, view: 'changes', history: [], selectedCommit: null, commitDetail: null, selectedCommitFile: null, commitFileDiff: null, selectedLines: null, selectionAnchor: null, selectionSide: null, review: { comments: [], openCommentCount: 0 }, commentComposer: null };
+const model = { repo: null, selected: null, diff: null, layout: 'unified', busy: false, view: 'changes', history: [], selectedCommit: null, commitDetail: null, selectedCommitFile: null, commitFileDiff: null, selectedLines: null, selectionAnchor: null, selectionSide: null, review: { comments: [], openCommentCount: 0 }, commentComposer: null, diffRequestId: 0, diffLoadingKey: null, diffKey: null };
 const sidebarState = {
   changes: {
     collapsed: localStorage.getItem('git-review:sidebar:changes') === 'collapsed',
@@ -23,6 +23,11 @@ const escapeHtml = (value = '') => String(value).replaceAll('&', '&amp;').replac
 const basename = (filePath) => filePath.split('/').pop();
 const dirname = (filePath) => { const parts = filePath.split('/'); parts.pop(); return parts.length ? `${parts.join('/')}/` : ''; };
 const fileKey = (file) => `${file.section}:${file.path}`;
+const diffStateKey = (file, repo = model.repo) => JSON.stringify({
+  file: fileKey(file), status: file.status, indexStatus: file.indexStatus, worktreeStatus: file.worktreeStatus,
+  mtime: file.worktreeMtimeMs || 0, ctime: file.worktreeCtimeMs || 0, size: file.worktreeSize ?? null,
+  missing: Boolean(file.worktreeMissing), indexMtime: repo?.indexMtimeMs || 0, indexSize: repo?.indexSize || 0,
+});
 
 function maxSidebarWidth() { return Math.max(220, window.innerWidth - 360); }
 function displayedSidebarWidth(view) {
@@ -143,7 +148,10 @@ function renderRepo(state) {
   updateCommitUi();
   if (model.selected) {
     const stillPresent = [...state.changes, ...state.staged].find((file) => fileKey(file) === fileKey(model.selected));
-    if (stillPresent) { model.selected = stillPresent; loadDiff(false); } else { model.selected = null; model.diff = null; clearLineSelection(); renderReview(); }
+    if (stillPresent) {
+      const nextDiffKey = diffStateKey(stillPresent, state); model.selected = stillPresent;
+      if (nextDiffKey !== model.diffKey && nextDiffKey !== model.diffLoadingKey) loadDiff(false);
+    } else { model.selected = null; model.diff = null; model.diffKey = null; model.diffLoadingKey = null; model.diffRequestId += 1; clearLineSelection(); renderReview(); }
   }
   renderFiles(); if (!model.selected) renderReview();
   if (model.view === 'history' && oldHead && oldHead !== state.head) loadHistory();
@@ -151,12 +159,21 @@ function renderRepo(state) {
   clearTimeout(renderRepo.timer); renderRepo.timer = setTimeout(() => { ui.updatedLabel.textContent = state.operation ? `${state.operation} in progress` : 'Live'; }, 1400);
 }
 
-async function selectFile(file) { model.selected = file; model.diff = null; clearLineSelection(); ui.content.scrollTop = 0; ui.content.scrollLeft = 0; renderFiles(); renderReview(); await loadDiff(true); }
+async function selectFile(file) {
+  model.selected = file; model.diff = null; model.diffKey = null; model.diffLoadingKey = null; model.diffRequestId += 1;
+  clearLineSelection(); ui.content.scrollTop = 0; ui.content.scrollLeft = 0; renderFiles(); renderReview(); await loadDiff(true);
+}
 async function loadDiff(showLoading) {
-  if (!model.selected) return; const requestedKey = fileKey(model.selected);
+  if (!model.selected) return;
+  const requestedFileKey = fileKey(model.selected); const requestedStateKey = diffStateKey(model.selected); const requestId = ++model.diffRequestId;
+  if (model.diffLoadingKey === requestedStateKey) return;
+  model.diffLoadingKey = requestedStateKey;
   if (showLoading) ui.content.innerHTML = '<div class="empty-diff">Loading diff…</div>';
   const result = await unwrap(window.gitReview.diff(model.selected.path, model.selected.section));
-  if (!result || !model.selected || requestedKey !== fileKey(model.selected)) return; model.diff = result; renderReview();
+  if (requestId !== model.diffRequestId) return;
+  model.diffLoadingKey = null;
+  if (!result || !model.selected || requestedFileKey !== fileKey(model.selected) || requestedStateKey !== diffStateKey(model.selected)) return;
+  model.diff = result; model.diffKey = requestedStateKey; renderReview();
 }
 function renderReview() {
   if (!model.selected) { ui.toolbar.classList.add('hidden'); ui.content.innerHTML = '<div class="welcome"><div><div class="welcome-mark">✓</div><h2>Select a changed file</h2><p>Review, stage, and commit without opening an editor.</p></div></div>'; return; }

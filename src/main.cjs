@@ -9,6 +9,7 @@ let repository;
 let sessionId;
 let repositoryIdentity;
 let refreshTimer;
+let uiRequestTimer;
 let lastStateFingerprint = '';
 let lastReviewFingerprint = '';
 let mutationQueue = Promise.resolve();
@@ -319,10 +320,17 @@ async function createWindow() {
   mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   mainWindow.on('closed', () => {
     mainWindow = null;
-    clearInterval(refreshTimer);
+    clearInterval(refreshTimer); clearInterval(uiRequestTimer);
   });
+  const refreshAfterVisibilityChange = () => { sendState(true); sendReview(true); };
+  mainWindow.on('show', refreshAfterVisibilityChange);
+  mainWindow.on('restore', refreshAfterVisibilityChange);
 
-  refreshTimer = setInterval(() => { sendState(); sendReview(); checkUiRequests(); }, 500);
+  refreshTimer = setInterval(() => {
+    if (!mainWindow?.isVisible() || mainWindow.isMinimized()) return;
+    sendState();
+  }, 1500);
+  uiRequestTimer = setInterval(() => { sendReview(); checkUiRequests(); }, 400);
 }
 
 app.whenReady().then(async () => {
