@@ -46,6 +46,16 @@ gittygo-uninstall
 
 Use `gittygo-uninstall --purge` only when the local `~/.gittygo` state should also be deleted.
 
+Before testing, review the [known alpha limitations](KNOWN_LIMITATIONS.md). Invited testers can use the [ten-minute testing checklist](TESTING.md).
+
+## Troubleshooting
+
+- **`gittygo: command not found`:** open a new terminal. The installer adds `~/.local/bin` to `~/.zprofile` when needed.
+- **Git is unavailable:** run `xcode-select --install` to install Apple's command-line Git.
+- **Repository operation failed:** run `git status` in the repository for the underlying Git state and error context.
+- **State appears damaged:** quit GittyGo and move `~/.gittygo` to a backup location before reopening. Do not delete it until the problem is understood.
+- **macOS blocks launch:** do not disable system security or remove quarantine manually; report the exact message and how the installer was obtained.
+
 ## Run locally
 
 Requires Node.js 22+ and Git.

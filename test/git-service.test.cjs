@@ -207,3 +207,100 @@ test('commit returns the new short hash', async (t) => {
   assert.match(hash, /^[0-9a-f]+$/);
   assert.equal(command(repo, ['log', '-1', '--pretty=%s']).trim(), 'Add committed line');
 });
+
+test('an unborn repository can stage, unstage, and create its initial commit', async (t) => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-unborn-'));
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  command(repo, ['init', '-q']);
+  command(repo, ['config', 'user.name', 'Test User']);
+  command(repo, ['config', 'user.email', 'test@example.com']);
+  fs.writeFileSync(path.join(repo, 'first.txt'), 'first\n');
+
+  assert.equal((await git.getState(repo)).head, '');
+  await git.stageFile(repo, 'first.txt');
+  assert.equal((await git.getState(repo)).staged.length, 1);
+  await git.unstageFile(repo, 'first.txt');
+  assert.equal((await git.getState(repo)).changes[0].path, 'first.txt');
+  await git.stageAll(repo);
+  await git.commit(repo, 'Initial commit');
+  assert.notEqual((await git.getState(repo)).head, '');
+});
+
+test('spaces, Unicode, and leading dashes remain safe repository paths', async (t) => {
+  const repo = createRepo();
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  const names = ['space name.txt', 'überblick.txt', '--leading.txt'];
+  names.forEach((name) => fs.writeFileSync(path.join(repo, name), `${name}\n`));
+  assert.deepEqual((await git.getState(repo)).changes.map((file) => file.path).sort(), names.sort());
+  for (const name of names) await git.stageFile(repo, name);
+  assert.equal((await git.getState(repo)).staged.length, names.length);
+});
+
+test('merge conflicts are surfaced with operation state', async (t) => {
+  const repo = createRepo();
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  const initialBranch = command(repo, ['branch', '--show-current']).trim();
+  command(repo, ['switch', '-qc', 'conflicting']);
+  fs.writeFileSync(path.join(repo, 'sample.txt'), 'feature\n');
+  command(repo, ['commit', '-qam', 'Feature change']);
+  command(repo, ['switch', '-q', initialBranch]);
+  fs.writeFileSync(path.join(repo, 'sample.txt'), 'main\n');
+  command(repo, ['commit', '-qam', 'Main change']);
+  assert.throws(() => command(repo, ['merge', 'conflicting']));
+
+  const state = await git.getState(repo);
+  assert.equal(state.operation, 'merge');
+  assert.equal(state.conflicted, true);
+  assert.equal(state.changes[0].path, 'sample.txt');
+});
+
+test('linked worktrees receive distinct identities over one common repository', async (t) => {
+  const repo = createRepo();
+  const worktree = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-worktree-parent-'));
+  fs.rmSync(worktree, { recursive: true, force: true });
+  t.after(() => {
+    fs.rmSync(worktree, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+  command(repo, ['worktree', 'add', '-qb', 'worktree-test', worktree]);
+  const primary = await git.getRepositoryIdentity(repo);
+  const linked = await git.getRepositoryIdentity(worktree);
+  assert.equal(primary.gitCommonDirectory, linked.gitCommonDirectory);
+  assert.notEqual(primary.worktreeRoot, linked.worktreeRoot);
+  assert.notEqual(primary.repoIdentity, linked.repoIdentity);
+  assert.equal((await git.getState(worktree)).branch, 'worktree-test');
+});
+
+test('fetch, fast-forward pull, and push work against a local remote', async (t) => {
+  const repo = createRepo();
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-remote-'));
+  const cloneParent = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-clone-parent-'));
+  const clone = path.join(cloneParent, 'clone');
+  t.after(() => {
+    fs.rmSync(cloneParent, { recursive: true, force: true });
+    fs.rmSync(bare, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+  command(bare, ['init', '--bare', '-q']);
+  await git.addRemote(repo, 'origin', bare);
+  await git.push(repo);
+  const branch = command(repo, ['branch', '--show-current']).trim();
+  command(bare, ['symbolic-ref', 'HEAD', `refs/heads/${branch}`]);
+  execFileSync('git', ['clone', '-q', bare, clone]);
+  command(clone, ['config', 'user.name', 'Test User']);
+  command(clone, ['config', 'user.email', 'test@example.com']);
+  fs.writeFileSync(path.join(clone, 'remote.txt'), 'remote\n');
+  command(clone, ['add', '.']);
+  command(clone, ['commit', '-qm', 'Remote change']);
+  command(clone, ['push', '-q']);
+
+  await git.fetchRemote(repo);
+  assert.equal((await git.getState(repo)).behind, 1);
+  await git.pull(repo);
+  assert.equal(fs.readFileSync(path.join(repo, 'remote.txt'), 'utf8'), 'remote\n');
+  fs.writeFileSync(path.join(repo, 'local.txt'), 'local\n');
+  await git.stageFile(repo, 'local.txt');
+  await git.commit(repo, 'Local change');
+  await git.push(repo);
+  assert.equal(command(bare, ['log', '-1', '--pretty=%s']).trim(), 'Local change');
+});

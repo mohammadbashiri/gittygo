@@ -270,7 +270,9 @@ async function stageFile(repo, filePath) {
 }
 
 async function unstageFile(repo, filePath) {
-  await git(repo, ['restore', '--staged', '--', filePath]);
+  const hasHead = await git(repo, ['rev-parse', '--verify', 'HEAD']).then(() => true).catch(() => false);
+  if (hasHead) await git(repo, ['restore', '--staged', '--', filePath]);
+  else await git(repo, ['rm', '--cached', '--ignore-unmatch', '--', filePath]);
 }
 
 async function stageAll(repo) {
