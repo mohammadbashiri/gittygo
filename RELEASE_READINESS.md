@@ -8,8 +8,8 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 
 | Target | Status | Reason |
 |---|---|---|
-| Local development use | ✅ Ready | Core workflows work; 21 automated tests pass. |
-| Unsigned `0.1.0-alpha.1` GitHub alpha | 🟡 Distribution blocked | Code, icon, package, installer, targeted tests, and packaged smoke test are ready; GitHub authentication/release and real download validation remain. |
+| Local development use | ✅ Ready | Core workflows work; 26 automated tests pass. |
+| Unsigned GitHub friend alpha | ✅ Ready | `v0.1.0-alpha.1` is public and its real installer is validated; the revised-logo `v0.1.0-alpha.2` candidate is built and tested. |
 | Public developer preview | 🔴 Not ready | Private-alpha gates plus broader security, compatibility, documentation, and tester feedback remain. |
 
 ## 1. Product foundation
@@ -17,11 +17,11 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 | Check | Status | Evidence / next action |
 |---|---|---|
 | Product identity is consistently GittyGo | ✅ | App, CLI, package, state directory, session prefix, docs, and tests renamed. |
-| Canonical repository extracted | 🟡 | Local repository exists at `/Users/mo/Projects/gittygo`; private GitHub repository awaits renewed `gh` authentication. |
+| Canonical repository extracted | ✅ | Local repository exists at `/Users/mo/Projects/gittygo` and is public at `https://github.com/mohammadbashiri/gittygo`. |
 | Historical timestamps shifted after working hours | ✅ | Existing product history shifted exactly six hours while preserving order and intervals. |
 | Untouched history backup exists | ✅ | `/Users/mo/Projects/agentic-ui-tools-pre-gittygo.bundle` verified as complete. |
 | Canonical portable agent skill | ✅ | `skills/gittygo/SKILL.md`; explicit invocation only, normal Git commands remain the agent interface. |
-| Versioning policy | ✅ | Package and planned first tag use `0.1.0-alpha.1` / `v0.1.0-alpha.1`. |
+| Versioning policy | ✅ | Published first tag is `v0.1.0-alpha.1`; the revised-logo package is `0.1.0-alpha.2`. |
 | License selected and included | ✅ | MIT License, copyright © 2026 Mohammad Bashiri; package metadata declares MIT. |
 | Official branding protected | ✅ | `BRANDING.md` permits truthful references but requires modified distributions to avoid implying official status or endorsement. |
 
@@ -50,7 +50,7 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 | Repository strings/comments rendered safely | ✅ | Focused audit found escaped renderer output and explicit untrusted-data agent instructions; no direct HTML injection route found. |
 | Git argument/command-injection resistance | ✅ Alpha scope | Focused audit found argument-array execution, option terminators, and branch validation with no direct shell-injection route. |
 | Path traversal and symlink safety | ✅ Alpha scope | Focused audit found no direct traversal route; discard boundaries and state-root symlink rejection are implemented and tested. |
-| Installer supply-chain integrity | 🟡 | HTTPS-only downloads, SHA-256 verification, private temporary extraction, and fail-closed checks are implemented; validate against an actual GitHub Release. |
+| Installer supply-chain integrity | ✅ Alpha scope | HTTPS-only downloads, SHA-256 verification, private temporary extraction, and fail-closed checks are implemented and validated against the public GitHub Release. |
 | Dependency vulnerability audit | ✅ | `npm audit` reports zero vulnerabilities. |
 | Dependency license audit | ✅ | Production tree is MIT/ISC; dependency texts remain in ASAR and Electron/Chromium notices plus project license/branding are bundled as app resources. |
 | Telemetry/network behavior | ✅ | No telemetry or application analytics; trusted-repository/network boundary is documented in README. |
@@ -75,9 +75,9 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 
 | Check | Status | Evidence / next action |
 |---|---|---|
-| Target platform defined | ✅ | First private alpha: macOS Apple Silicon. |
+| Target platform defined | ✅ | First friend alpha: macOS Apple Silicon. |
 | Product metadata | ✅ | Product name, author, copyright, MIT license, alpha version, bundle ID `io.github.mohammadbashiri.gittygo`, category, icon, and artifact naming are configured. |
-| Final app icon | ✅ | Final light/dark logo SVGs plus the macOS squircle source, 1024px PNG, complete iconset, and `.icns` are generated and wired into Electron Builder. |
+| Final app icon | ✅ | Revised light/dark logo SVGs plus the macOS squircle source, 1024px PNG, complete iconset, and `.icns` are generated and wired into Electron Builder. |
 | Electron packaging configuration | ✅ Alpha scope | Electron Builder produces the intended unsigned branded arm64 ASAR ZIP with bundled CLI, skills, and license resources; DMG/signing are intentionally unnecessary for the friend alpha. |
 | Packaged CLI wrapper | ✅ | Bundled `ELECTRON_RUN_AS_NODE` wrapper runs instructions/context and launches the packaged GUI without external Node/npm. |
 | Apple Developer signing | ✅ Deferred by decision | The free release intentionally makes no verified-developer claim; revisit only if future demand justifies Apple’s annual fee. |
@@ -90,10 +90,10 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 
 | Check | Status | Evidence / next action |
 |---|---|---|
-| Private GitHub repository | 🔴 | GitHub CLI token is invalid; renew authentication, create `mohammadbashiri/gittygo`, and push. |
-| GitHub Release | ⬜ | Publish unsigned `v0.1.0-alpha.1` ZIP plus `SHA256SUMS` only after remaining gates pass. |
+| Public GitHub repository | ✅ | `https://github.com/mohammadbashiri/gittygo` is public and `main` is pushed. |
+| GitHub Release | ✅ | Unsigned `v0.1.0-alpha.1` ZIP plus `SHA256SUMS` are published; `v0.1.0-alpha.2` carries the revised logo. |
 | Source-install fallback | ✅ Deferred | Packaged installer is the friend-alpha path; source installation remains available to developers but needs no additional work now. |
-| One-command packaged installer | ✅ Locally validated | `scripts/install.sh` verifies SHA-256, installs under `~/Applications`/`~/.local/bin`, avoids `sudo`, and rolls forward by rerunning. Remote URL awaits GitHub release. |
+| One-command packaged installer | ✅ Publicly validated | `scripts/install.sh` verifies SHA-256, installs under `~/Applications`/`~/.local/bin`, avoids `sudo`, and rolls forward by rerunning; the real public URL passed isolated validation. |
 | Agent-skill installation | ✅ | Installer copies the bundled canonical skill into detected Pi/Claude/Codex skill roots and reports each change. |
 | Update path | ✅ | Rerunning the installer stages and replaces the app while preserving local state. |
 | Website/domain | ✅ Not required | GitHub repository, Releases, and raw installer URL are sufficient. |
@@ -104,7 +104,7 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 | Check | Status | Evidence / next action |
 |---|---|---|
 | README accurately describes current source workflow | ✅ | Renamed and tested commands documented. |
-| Installation documentation | 🟡 | README documents planned one-command install, update-by-rerun, and state-preserving/purge uninstall; verify final public URLs after release. |
+| Installation documentation | ✅ | README documents the validated public one-command install, update-by-rerun, and state-preserving/purge uninstall. |
 | Security/privacy statement | 🟡 | README documents trusted repositories, Git execution boundary, local state, permissions, no telemetry, and user-initiated network activity; add reporting channel before public preview. |
 | Known limitations | ✅ | `KNOWN_LIMITATIONS.md` documents platform, unsigned status, trusted repositories, conflicts, large diffs, updates, telemetry, and alpha safety. |
 | Troubleshooting and recovery | ✅ Alpha scope | README covers PATH, Git installation, Git errors, state backup/reset, and blocked launch guidance. |

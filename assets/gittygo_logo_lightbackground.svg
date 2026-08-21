@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-label="GittyGo logo">
-  <path fill="#000000" d="M0 0H160V80H80V160H160V240H0Z"/>
-  <path fill="#d80073" d="M160 80H320V240H240V160H160Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="GittyGo logo">
+  <path fill="#000000" d="M0 0H160V80H80V240H240V320H0Z"/>
+  <path fill="#fd0090" d="M160 80H320V240H240V160H160Z"/>
 </svg>

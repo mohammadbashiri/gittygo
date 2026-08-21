@@ -2,7 +2,7 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-ARCHIVE="${1:-$ROOT/dist/GittyGo-0.1.0-alpha.1-arm64.zip}"
+ARCHIVE="${1:-$ROOT/dist/GittyGo-0.1.0-alpha.2-arm64.zip}"
 CHECKSUMS="${2:-$ROOT/dist/SHA256SUMS}"
 TEST_HOME="$(mktemp -d "${TMPDIR:-/tmp}/gittygo-smoke-home.XXXXXX")"
 REPO="$TEST_HOME/repository"

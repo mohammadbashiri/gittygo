@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="${GITTYGO_VERSION:-0.1.0-alpha.1}"
+VERSION="${GITTYGO_VERSION:-0.1.0-alpha.2}"
 REPOSITORY="${GITTYGO_REPOSITORY:-mohammadbashiri/gittygo}"
 ARCHIVE_NAME="GittyGo-${VERSION}-arm64.zip"
 RELEASE_BASE="https://github.com/${REPOSITORY}/releases/download/v${VERSION}"

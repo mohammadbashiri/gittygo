@@ -10,8 +10,8 @@
   </defs>
   <rect x="72" y="60" width="880" height="880" rx="202" fill="url(#surface)" filter="url(#shadow)"/>
   <rect x="72.5" y="60.5" width="879" height="879" rx="201.5" fill="none" stroke="#000000" stroke-opacity="0.08"/>
-  <g transform="translate(160 248) scale(2.2)">
-    <path fill="#000000" d="M0 0H160V80H80V160H160V240H0Z"/>
-    <path fill="#d80073" d="M160 80H320V240H240V160H160Z"/>
+  <g transform="translate(192 192) scale(2)">
+    <path fill="#000000" d="M0 0H160V80H80V240H240V320H0Z"/>
+    <path fill="#fd0090" d="M160 80H320V240H240V160H160Z"/>
   </g>
 </svg>
