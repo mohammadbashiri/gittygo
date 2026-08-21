@@ -113,11 +113,19 @@ function reviewCommentsForFile(file) {
   return allReviewComments().filter((comment) => comment.anchor.path === file.path && comment.anchor.section === file.section);
 }
 function renderFiles() {
-  const groups = [{ title: 'Staged Changes', files: model.repo.staged }, { title: 'Changes', files: model.repo.changes }].filter((group) => group.files.length);
+  const groups = [
+    { title: 'Staged Changes', files: model.repo.staged, action: 'unstage', symbol: '−', actionLabel: 'Unstage all changes' },
+    { title: 'Changes', files: model.repo.changes, action: 'stage', symbol: '+', actionLabel: 'Stage all changes' },
+  ].filter((group) => group.files.length);
   if (!groups.length) { ui.groups.innerHTML = '<div class="empty-sidebar"><strong>Working tree clean</strong>There are no changes to review.</div>'; return; }
-  ui.groups.innerHTML = groups.map((group) => `<section class="group"><header class="group-heading"><span>${group.title}</span><span class="count">${group.files.length}</span></header>${group.files.map((file) => `<button class="file-row ${file.conflicted ? 'conflicted' : ''} ${model.selected && fileKey(file) === fileKey(model.selected) ? 'selected' : ''}" data-file-key="${escapeHtml(fileKey(file))}" title="${file.conflicted ? 'Conflict: resolve outside Git Review before staging' : escapeHtml(file.path)}"><span class="file-status ${escapeHtml(file.status)}">${escapeHtml(file.status)}</span><span class="file-path" title="${escapeHtml(file.path)}"><span class="file-dir">${escapeHtml(dirname(file.path))}</span>${escapeHtml(basename(file.path))}</span><span class="row-action" title="${file.section === 'staged' ? 'Unstage' : 'Stage'}">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length ? `<i class="comment-count">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length}</i>` : ''}${file.section === 'staged' ? '−' : '+'}</span></button>`).join('')}</section>`).join('');
+  ui.groups.innerHTML = groups.map((group) => `<section class="group"><header class="group-heading"><span>${group.title}</span><span class="group-heading-actions"><span class="count">${group.files.length}</span><button class="group-action" data-group-action="${group.action}" title="${group.actionLabel}" aria-label="${group.actionLabel}">${group.symbol}</button></span></header>${group.files.map((file) => `<button class="file-row ${file.conflicted ? 'conflicted' : ''} ${model.selected && fileKey(file) === fileKey(model.selected) ? 'selected' : ''}" data-file-key="${escapeHtml(fileKey(file))}" title="${file.conflicted ? 'Conflict: resolve outside Git Review before staging' : escapeHtml(file.path)}"><span class="file-status ${escapeHtml(file.status)}">${escapeHtml(file.status)}</span><span class="file-path" title="${escapeHtml(file.path)}"><span class="file-dir">${escapeHtml(dirname(file.path))}</span>${escapeHtml(basename(file.path))}</span><span class="row-action" title="${file.section === 'staged' ? 'Unstage' : 'Stage'}">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length ? `<i class="comment-count">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length}</i>` : ''}${file.section === 'staged' ? '−' : '+'}</span></button>`).join('')}</section>`).join('');
 }
 
+ui.groups.addEventListener('click', async (event) => {
+  const button = event.target.closest('.group-action'); if (!button || model.busy) return;
+  if (button.dataset.groupAction === 'stage') await unwrap(window.gitReview.stageAll(), 'All changes staged');
+  else await unwrap(window.gitReview.unstageAll(), 'All changes unstaged');
+});
 ui.groups.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return; const row = event.target.closest('.file-row'); if (!row || !model.repo) return;
   const file = [...model.repo.changes, ...model.repo.staged].find((item) => fileKey(item) === row.dataset.fileKey); if (!file) return;

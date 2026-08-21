@@ -229,6 +229,17 @@ async function unstageFile(repo, filePath) {
   await git(repo, ['restore', '--staged', '--', filePath]);
 }
 
+async function stageAll(repo) {
+  await git(repo, ['add', '--all']);
+}
+
+async function unstageAll(repo) {
+  let hasHead = true;
+  try { await git(repo, ['rev-parse', '--verify', 'HEAD']); } catch { hasHead = false; }
+  if (hasHead) await git(repo, ['restore', '--staged', '--', '.']);
+  else await git(repo, ['rm', '--cached', '--recursive', '--ignore-unmatch', '--', '.']);
+}
+
 async function discardFile(repo, filePath) {
   const state = await getState(repo);
   const file = state.changes.find((item) => item.path === filePath);
@@ -506,6 +517,8 @@ module.exports = {
   extractHunks,
   stageFile,
   unstageFile,
+  stageAll,
+  unstageAll,
   discardFile,
   stageHunk,
   unstageHunk,

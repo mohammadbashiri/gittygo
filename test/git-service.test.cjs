@@ -43,6 +43,23 @@ test('repository state separates staged and unstaged files', async (t) => {
   assert.equal(state.staged[0].path, 'new.txt');
 });
 
+test('all changes can be staged and unstaged together', async (t) => {
+  const repo = createRepo();
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  fs.appendFileSync(path.join(repo, 'sample.txt'), 'changed\n');
+  fs.writeFileSync(path.join(repo, 'new.txt'), 'new file\n');
+
+  await git.stageAll(repo);
+  let state = await git.getState(repo);
+  assert.equal(state.staged.length, 2);
+  assert.equal(state.changes.length, 0);
+
+  await git.unstageAll(repo);
+  state = await git.getState(repo);
+  assert.equal(state.staged.length, 0);
+  assert.equal(state.changes.length, 2);
+});
+
 test('a single hunk can be staged and unstaged', async (t) => {
   const repo = createRepo();
   t.after(() => fs.rmSync(repo, { recursive: true, force: true }));

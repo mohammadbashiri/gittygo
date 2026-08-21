@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('gitReview', {
   diff: (filePath, section) => ipcRenderer.invoke('repo:diff', filePath, section),
   stageFile: (filePath) => ipcRenderer.invoke('repo:stage-file', filePath),
   unstageFile: (filePath) => ipcRenderer.invoke('repo:unstage-file', filePath),
+  stageAll: () => ipcRenderer.invoke('repo:stage-all'),
+  unstageAll: () => ipcRenderer.invoke('repo:unstage-all'),
   discardFile: (filePath) => ipcRenderer.invoke('repo:discard-file', filePath),
   stageHunk: (patch, filePath) => ipcRenderer.invoke('repo:stage-hunk', patch, filePath),
   unstageHunk: (patch, filePath) => ipcRenderer.invoke('repo:unstage-hunk', patch, filePath),

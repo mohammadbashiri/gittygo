@@ -154,6 +154,14 @@ function registerIpc() {
   ipcMain.handle('repo:unstage-file', (_event, filePath) =>
     mutate(() => gitService.unstageFile(repository, filePath), { type: 'fileUnstaged', payload: { path: filePath } }),
   );
+  ipcMain.handle('repo:stage-all', () => mutate(
+    () => gitService.stageAll(repository),
+    (_result, before) => ({ type: 'allChangesStaged', payload: { fileCount: before.changes.length } }),
+  ));
+  ipcMain.handle('repo:unstage-all', () => mutate(
+    () => gitService.unstageAll(repository),
+    (_result, before) => ({ type: 'allChangesUnstaged', payload: { fileCount: before.staged.length } }),
+  ));
   ipcMain.handle('repo:stage-hunk', (_event, patch, filePath) =>
     mutate(() => gitService.stageHunk(repository, patch), { type: 'hunkStaged', payload: { path: filePath } }),
   );

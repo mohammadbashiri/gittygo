@@ -9,7 +9,7 @@ Git Review opens a normal mouse-and-keyboard window for reviewing repository cha
 - Staged and unstaged file groups
 - Unified and side-by-side diffs
 - Independently resizable and collapsible Changes and History sidebars with persisted state
-- Stage/unstage files, hunks, and selected changed-line ranges
+- Stage/unstage all changes, individual files, hunks, and selected changed-line ranges
 - Line/range review comments exposed immediately through agent context, with lightweight resolution and agent-driven navigation
 - Discard files and hunks with native confirmation
 - Agent-populated, user-editable commit messages plus commit/amend and safe undo
