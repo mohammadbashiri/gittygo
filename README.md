@@ -12,7 +12,7 @@ Git Review opens a normal mouse-and-keyboard window for reviewing repository cha
 - Stage/unstage files, hunks, and selected changed-line ranges
 - Line/range review comments exposed immediately through agent context, with lightweight resolution and agent-driven navigation
 - Discard files and hunks with native confirmation
-- Commit or amend staged changes and safely undo the last commit while preserving changes
+- Agent-populated, user-editable commit messages plus commit/amend and safe undo
 - Commit history with refs, comparison context, change totals, structured file inventory, and lazy read-only visual diffs
 - Branch picker and branch creation
 - Fetch, guarded fast-forward pull, and guarded push
@@ -54,6 +54,7 @@ Open review comments are delivered through the same context response. The user s
 git-review review show --session <session-id> --json
 git-review review focus --session <session-id> --comment <comment-id> --json
 git-review review resolve --session <session-id> --comment <comment-id> --json
+git-review commit-message --session <session-id> --message "Proposed message" --json
 ```
 
 `git-review .` remains shorthand for `git-review open .`. Use `--wait` only when a blocking process is explicitly desired.

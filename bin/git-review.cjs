@@ -79,6 +79,14 @@ async function review(args) {
   print({ status: 'resolved', comment: result.comment, resolution: result.resolution });
 }
 
+async function commitMessage(args) {
+  const sessionId = valueAfter(args, '--session');
+  const message = valueAfter(args, '--message');
+  if (!sessionId || message === undefined) throw new Error('Usage: git-review commit-message --session <id> --message <text> --json');
+  await sessionStore.requestCommitMessage(sessionId, message);
+  print({ status: 'commit-message-requested', sessionId, message });
+}
+
 function instructions() {
   print({
     protocol: 'Git Review agent context protocol',
@@ -91,6 +99,7 @@ function instructions() {
   const command = args[0];
   if (command === 'context') await context(args.slice(1));
   else if (command === 'review') await review(args.slice(1));
+  else if (command === 'commit-message') await commitMessage(args.slice(1));
   else if (command === 'instructions' || command === '--agent-instructions') instructions();
   else await open(command === 'open' ? args.slice(1) : args);
 })().catch((error) => {

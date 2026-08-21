@@ -58,16 +58,20 @@ async function sendReview(force = false) {
   }
 }
 
-async function checkCommentFocusRequest() {
+async function checkUiRequests() {
   if (!sessionId || !mainWindow || mainWindow.isDestroyed() || focusCheckInFlight) return;
   focusCheckInFlight = true;
   try {
-    const request = await sessionStore.consumeCommentFocus(sessionId);
-    if (request) {
+    const [focusRequest, commitMessageRequest] = await Promise.all([
+      sessionStore.consumeCommentFocus(sessionId),
+      sessionStore.consumeCommitMessage(sessionId),
+    ]);
+    if (focusRequest || commitMessageRequest) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show(); mainWindow.focus();
-      mainWindow.webContents.send('review:focus-comment', request.commentId);
     }
+    if (focusRequest) mainWindow.webContents.send('review:focus-comment', focusRequest.commentId);
+    if (commitMessageRequest) mainWindow.webContents.send('ui:set-commit-message', commitMessageRequest.message);
   } catch (error) {
     mainWindow.webContents.send('repo:error', serializeError(error));
   } finally { focusCheckInFlight = false; }
@@ -310,7 +314,7 @@ async function createWindow() {
     clearInterval(refreshTimer);
   });
 
-  refreshTimer = setInterval(() => { sendState(); sendReview(); checkCommentFocusRequest(); }, 500);
+  refreshTimer = setInterval(() => { sendState(); sendReview(); checkUiRequests(); }, 500);
 }
 
 app.whenReady().then(async () => {

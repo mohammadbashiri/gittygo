@@ -81,6 +81,9 @@ test('open comments are immediately authoritative context alongside their event'
   await sessions.requestCommentFocus(created.session.sessionId, added.comment.id);
   assert.equal((await sessions.consumeCommentFocus(created.session.sessionId)).commentId, added.comment.id);
   assert.equal(await sessions.consumeCommentFocus(created.session.sessionId), null);
+  await sessions.requestCommitMessage(created.session.sessionId, 'Address review feedback');
+  assert.equal((await sessions.consumeCommitMessage(created.session.sessionId)).message, 'Address review feedback');
+  assert.equal(await sessions.consumeCommitMessage(created.session.sessionId), null);
 });
 
 test('context detects repository state changed outside recorded UI events', async (t) => {

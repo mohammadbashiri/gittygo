@@ -457,6 +457,12 @@ window.gitReview.onReviewChanged((review) => {
   model.review = review; if (model.repo) renderFiles(); if (model.selected && model.diff) renderReview();
 });
 window.gitReview.onFocusComment(focusReviewComment);
+window.gitReview.onSetCommitMessage(async (message) => {
+  await setView('changes');
+  ui.commitMessage.value = message; updateCommitUi();
+  ui.commitMessage.focus(); ui.commitMessage.setSelectionRange(message.length, message.length);
+  showToast('Commit message added for review.');
+});
 window.gitReview.onError((error) => showToast(error.message, true));
 (async function initialize() {
   const [state, review] = await Promise.all([unwrap(window.gitReview.state()), unwrap(window.gitReview.reviewState())]);

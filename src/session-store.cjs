@@ -20,6 +20,7 @@ function sessionDirectory(sessionId) {
 function sessionFile(sessionId) { return path.join(sessionDirectory(sessionId), 'session.json'); }
 function eventsFile(sessionId) { return path.join(sessionDirectory(sessionId), 'events.jsonl'); }
 function focusRequestFile(sessionId) { return path.join(sessionDirectory(sessionId), 'focus-request.json'); }
+function commitMessageRequestFile(sessionId) { return path.join(sessionDirectory(sessionId), 'commit-message-request.json'); }
 
 async function writeJsonSecure(filePath, value) {
   const temporary = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
@@ -147,6 +148,25 @@ async function consumeCommentFocus(sessionId) {
   return request;
 }
 
+async function requestCommitMessage(sessionId, message) {
+  const value = String(message || '');
+  if (value.length > 20000) throw new Error('Commit message is too long.');
+  await loadSession(sessionId);
+  const request = { message: value, requestedAt: new Date().toISOString() };
+  await writeJsonSecure(commitMessageRequestFile(sessionId), request);
+  return request;
+}
+
+async function consumeCommitMessage(sessionId) {
+  const filePath = commitMessageRequestFile(sessionId);
+  const request = await fs.readFile(filePath, 'utf8').then(JSON.parse).catch((error) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (request) await fs.rm(filePath, { force: true });
+  return request;
+}
+
 async function readEvents(sessionId) {
   const raw = await fs.readFile(eventsFile(sessionId), 'utf8').catch((error) => {
     if (error.code === 'ENOENT') return '';
@@ -218,6 +238,8 @@ module.exports = {
   appendEvent,
   requestCommentFocus,
   consumeCommentFocus,
+  requestCommitMessage,
+  consumeCommitMessage,
   getContext,
   snapshotFromState,
   instructionFor,

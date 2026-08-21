@@ -31,5 +31,6 @@ contextBridge.exposeInMainWorld('gitReview', {
   onChanged: (callback) => ipcRenderer.on('repo:changed', (_event, state) => callback(state)),
   onReviewChanged: (callback) => ipcRenderer.on('review:changed', (_event, review) => callback(review)),
   onFocusComment: (callback) => ipcRenderer.on('review:focus-comment', (_event, commentId) => callback(commentId)),
+  onSetCommitMessage: (callback) => ipcRenderer.on('ui:set-commit-message', (_event, message) => callback(message)),
   onError: (callback) => ipcRenderer.on('repo:error', (_event, error) => callback(error)),
 });
