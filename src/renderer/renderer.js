@@ -10,28 +10,87 @@ const ui = {
 
 const model = { repo: null, selected: null, diff: null, layout: 'unified', busy: false, view: 'changes', history: [], selectedCommit: null, commitDetail: null, selectedCommitFile: null, commitFileDiff: null, selectedLines: null, selectionAnchor: null };
 const sidebarState = {
-  changes: localStorage.getItem('git-review:sidebar:changes') === 'collapsed',
-  history: localStorage.getItem('git-review:sidebar:history') === 'collapsed',
+  changes: {
+    collapsed: localStorage.getItem('git-review:sidebar:changes') === 'collapsed',
+    width: Number(localStorage.getItem('git-review:sidebar:changes:width')) || null,
+  },
+  history: {
+    collapsed: localStorage.getItem('git-review:sidebar:history') === 'collapsed',
+    width: Number(localStorage.getItem('git-review:sidebar:history:width')) || null,
+  },
 };
 const escapeHtml = (value = '') => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const basename = (filePath) => filePath.split('/').pop();
 const dirname = (filePath) => { const parts = filePath.split('/'); parts.pop(); return parts.length ? `${parts.join('/')}/` : ''; };
 const fileKey = (file) => `${file.section}:${file.path}`;
 
+function maxSidebarWidth() { return Math.max(220, window.innerWidth - 360); }
+function displayedSidebarWidth(view) {
+  const saved = sidebarState[view].width;
+  return saved ? Math.min(saved, maxSidebarWidth()) : null;
+}
+function persistSidebarState(view) {
+  const state = sidebarState[view];
+  localStorage.setItem(`git-review:sidebar:${view}`, state.collapsed ? 'collapsed' : 'expanded');
+  if (state.width) localStorage.setItem(`git-review:sidebar:${view}:width`, String(Math.round(state.width)));
+}
 function applySidebarState(view) {
-  const container = $(`#${view}-view`); const button = container.querySelector('.sidebar-toggle'); const collapsed = sidebarState[view];
-  container.classList.toggle('sidebar-collapsed', collapsed);
-  button.textContent = collapsed ? '›' : '‹';
-  button.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-  button.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${view === 'changes' ? 'Changes' : 'History'} sidebar`);
-  button.setAttribute('aria-expanded', String(!collapsed));
+  const container = $(`#${view}-view`); const button = container.querySelector('.sidebar-toggle'); const state = sidebarState[view];
+  const width = displayedSidebarWidth(view);
+  if (width) container.style.setProperty('--sidebar-width', `${width}px`); else container.style.removeProperty('--sidebar-width');
+  container.classList.toggle('sidebar-collapsed', state.collapsed);
+  button.textContent = state.collapsed ? '›' : '‹';
+  button.title = state.collapsed ? 'Drag to resize or click to expand' : 'Drag to resize or click to collapse';
+  button.setAttribute('aria-label', `${state.collapsed ? 'Expand' : 'Collapse'} ${view === 'changes' ? 'Changes' : 'History'} sidebar; drag to resize`);
+  button.setAttribute('aria-expanded', String(!state.collapsed));
 }
 
-document.querySelectorAll('.sidebar-toggle').forEach((button) => button.addEventListener('click', () => {
-  const view = button.dataset.sidebar; sidebarState[view] = !sidebarState[view];
-  localStorage.setItem(`git-review:sidebar:${view}`, sidebarState[view] ? 'collapsed' : 'expanded');
-  applySidebarState(view);
-}));
+let sidebarDrag = null;
+document.querySelectorAll('.sidebar-toggle').forEach((button) => {
+  button.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    const view = button.dataset.sidebar; const container = $(`#${view}-view`);
+    sidebarDrag = {
+      button, view, container, startX: event.clientX,
+      startWidth: sidebarState[view].collapsed ? 0 : container.querySelector('aside').getBoundingClientRect().width,
+      moved: false, previewWidth: 0,
+    };
+    button.setPointerCapture(event.pointerId); document.body.classList.add('resizing-sidebar'); event.preventDefault();
+  });
+  button.addEventListener('pointermove', (event) => {
+    if (!sidebarDrag || sidebarDrag.button !== button) return;
+    const delta = event.clientX - sidebarDrag.startX;
+    if (!sidebarDrag.moved && Math.abs(delta) < 4) return;
+    sidebarDrag.moved = true;
+    sidebarDrag.previewWidth = Math.max(0, Math.min(maxSidebarWidth(), sidebarDrag.startWidth + delta));
+    sidebarDrag.container.classList.remove('sidebar-collapsed');
+    sidebarDrag.container.style.setProperty('--sidebar-width', `${sidebarDrag.previewWidth}px`);
+  });
+  const finishDrag = (event) => {
+    if (!sidebarDrag || sidebarDrag.button !== button) return;
+    const { view, moved, previewWidth } = sidebarDrag; const state = sidebarState[view];
+    if (moved) {
+      if (previewWidth < 100) state.collapsed = true;
+      else {
+        state.collapsed = false;
+        state.width = Math.max(view === 'history' ? 280 : 220, previewWidth);
+      }
+    } else state.collapsed = !state.collapsed;
+    persistSidebarState(view); sidebarDrag = null; document.body.classList.remove('resizing-sidebar'); applySidebarState(view);
+    if (button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId);
+  };
+  button.addEventListener('pointerup', finishDrag);
+  button.addEventListener('pointercancel', () => {
+    if (!sidebarDrag || sidebarDrag.button !== button) return;
+    const view = sidebarDrag.view; sidebarDrag = null; document.body.classList.remove('resizing-sidebar'); applySidebarState(view);
+  });
+  button.addEventListener('click', (event) => {
+    if (event.detail !== 0) return;
+    const view = button.dataset.sidebar; sidebarState[view].collapsed = !sidebarState[view].collapsed;
+    persistSidebarState(view); applySidebarState(view);
+  });
+});
+window.addEventListener('resize', () => { applySidebarState('changes'); applySidebarState('history'); });
 applySidebarState('changes'); applySidebarState('history');
 
 function showToast(message, error = false) {
