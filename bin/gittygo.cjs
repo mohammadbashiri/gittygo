@@ -6,7 +6,8 @@ const sessionStore = require('../src/session-store.cjs');
 const reviewStore = require('../src/review-store.cjs');
 
 const projectRoot = path.resolve(__dirname, '..');
-const electron = require('electron');
+const runningWithBundledNode = process.env.ELECTRON_RUN_AS_NODE === '1';
+const electron = runningWithBundledNode ? process.execPath : require('electron');
 
 function valueAfter(args, flag) {
   const index = args.indexOf(flag);
@@ -24,9 +25,12 @@ async function open(args) {
   const wait = args.includes('--wait');
   const created = await sessionStore.createSession(repo);
   const sessionId = created.session.sessionId;
+  const guiEnvironment = { ...process.env };
+  delete guiEnvironment.ELECTRON_RUN_AS_NODE;
   const child = spawn(electron, [projectRoot, '--', created.session.worktreeRoot, '--session', sessionId], {
     detached: !wait,
     stdio: wait ? 'inherit' : 'ignore',
+    env: guiEnvironment,
   });
 
   await new Promise((resolve, reject) => {

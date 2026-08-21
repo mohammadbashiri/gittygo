@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+if [ -n "${GITTYGO_APP:-}" ]; then
+  APP="$GITTYGO_APP"
+elif [ -d "$HOME/Applications/GittyGo.app" ]; then
+  APP="$HOME/Applications/GittyGo.app"
+elif [ -d "/Applications/GittyGo.app" ]; then
+  APP="/Applications/GittyGo.app"
+else
+  echo "GittyGo.app was not found in ~/Applications or /Applications." >&2
+  echo "Set GITTYGO_APP to its full path and try again." >&2
+  exit 1
+fi
+
+EXECUTABLE="$APP/Contents/MacOS/GittyGo"
+ASAR="$APP/Contents/Resources/app.asar"
+CLI="$ASAR/bin/gittygo.cjs"
+if [ ! -x "$EXECUTABLE" ] || [ ! -f "$ASAR" ]; then
+  echo "The GittyGo installation is incomplete or damaged: $APP" >&2
+  exit 1
+fi
+
+exec env ELECTRON_RUN_AS_NODE=1 "$EXECUTABLE" "$CLI" "$@"

@@ -78,6 +78,32 @@ test('concurrent event writers allocate unique ordered sequences', async (t) => 
   assert.equal(new Set(context.events.map((event) => event.eventId)).size, 20);
 });
 
+test('event journal recovers sequence metadata and an incomplete trailing write', async (t) => {
+  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-state-'));
+  const repo = createRepo();
+  process.env.GITTYGO_STATE_DIR = stateDirectory;
+  t.after(() => {
+    delete process.env.GITTYGO_STATE_DIR;
+    fs.rmSync(stateDirectory, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  const created = await sessions.createSession(repo);
+  const directory = path.join(stateDirectory, 'sessions', created.session.sessionId);
+  await sessions.appendEvent(created.session.sessionId, { type: 'first' });
+
+  const sessionPath = path.join(directory, 'session.json');
+  const record = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+  record.nextSequence = 1;
+  fs.writeFileSync(sessionPath, `${JSON.stringify(record, null, 2)}\n`);
+  await sessions.appendEvent(created.session.sessionId, { type: 'second' });
+
+  fs.appendFileSync(path.join(directory, 'events.jsonl'), '{"seq":3,"partial"');
+  assert.deepEqual((await sessions.getContext(created.session.sessionId, 0)).events.map((event) => event.seq), [1, 2]);
+  await sessions.appendEvent(created.session.sessionId, { type: 'third' });
+  assert.deepEqual((await sessions.getContext(created.session.sessionId, 0)).events.map((event) => event.seq), [1, 2, 3]);
+});
+
 test('open comments are immediately authoritative context alongside their event', async (t) => {
   const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gittygo-state-'));
   const repo = createRepo();

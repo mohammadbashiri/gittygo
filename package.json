@@ -1,8 +1,12 @@
 {
   "name": "gittygo",
   "productName": "GittyGo",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "Git review for humans and agents.",
+  "author": {
+    "name": "Mohammad Bashiri",
+    "email": "mohammadbashiri93@gmail.com"
+  },
   "private": true,
   "main": "src/main.cjs",
   "bin": {
@@ -10,9 +14,47 @@
   },
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/*.test.cjs"
+    "test": "node --test test/*.test.cjs",
+    "dist:mac": "electron-builder --mac --arm64",
+    "dist:mac:unsigned": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac zip --arm64"
   },
   "devDependencies": {
-    "electron": "^43.4.1"
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "proper-lockfile": "^4.1.2"
+  },
+  "build": {
+    "appId": "io.github.mohammadbashiri.gittygo",
+    "productName": "GittyGo",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "bin/**/*",
+      "skills/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "scripts/gittygo",
+        "to": "bin/gittygo"
+      }
+    ],
+    "artifactName": "GittyGo-${version}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["arm64"]
+        }
+      ]
+    }
   }
 }

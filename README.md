@@ -72,4 +72,20 @@ npm test
 
 Resolved comments leave the active review store; GittyGo is a structured feedback queue rather than a permanent discussion archive. Resolution events remain available for the lifetime of the coordination session.
 
-The renderer runs with Electron context isolation and sandboxing enabled. All repository mutations are handled in the main process, and destructive actions require user confirmation.
+The renderer runs with Electron context isolation and sandboxing enabled. All repository mutations are handled in the main process, and destructive actions require user confirmation. Confirmed destructive and network operations are cancelled if their reviewed repository state changes while confirmation is open.
+
+## Security and trust boundary
+
+GittyGo is currently intended for **trusted local repositories**. Git operations can invoke behavior configured by Git itself, including hooks, credential helpers, remote helpers, and repository remotes. Electron renderer sandboxing does not sandbox the external `git` process.
+
+GittyGo has no telemetry or application analytics. Repository coordination state and review comments are stored locally under `~/.gittygo` with user-only permissions. Network access occurs only through Git actions initiated by the user.
+
+## Packaging development
+
+An unsigned Apple Silicon ZIP can be built for local verification:
+
+```bash
+npm run dist:mac:unsigned
+```
+
+The resulting artifact is intentionally not a distributable release. A private alpha still requires a final icon and license, Developer ID signing, notarization, stapling, and clean-user installation testing.

@@ -1,4 +1,5 @@
 const { execFile, spawn } = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { promisify } = require('node:util');
@@ -171,6 +172,35 @@ async function getOperationState(repo) {
   if (await exists('REVERT_HEAD')) return 'revert';
   if (await exists('rebase-merge') || await exists('rebase-apply')) return 'rebase';
   return null;
+}
+
+async function hashWorktreePath(repo, filePath) {
+  return git(repo, ['hash-object', '--no-filters', '--', filePath]).then((value) => value.trim()).catch(() => 'missing');
+}
+
+async function getRepositoryMutationFingerprint(repo) {
+  const [head, branch, rawStatus, indexEntries, configuration] = await Promise.all([
+    git(repo, ['rev-parse', 'HEAD']).catch(() => ''),
+    git(repo, ['branch', '--show-current']),
+    git(repo, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+    git(repo, ['ls-files', '--stage', '-z']),
+    git(repo, ['config', '--null', '--list']),
+  ]);
+  const unstaged = parseStatus(rawStatus).filter((file) => file.unstaged);
+  const worktreeHashes = await Promise.all(unstaged.map(async (file) => [file.path, await hashWorktreePath(repo, file.path)]));
+  return crypto.createHash('sha256').update(JSON.stringify({
+    head: head.trim(), branch: branch.trim(), rawStatus, indexEntries, configuration, worktreeHashes,
+  })).digest('hex');
+}
+
+async function getFileChangeFingerprint(repo, filePath) {
+  const [head, rawStatus, indexEntry, worktreeHash] = await Promise.all([
+    git(repo, ['rev-parse', 'HEAD']).catch(() => ''),
+    git(repo, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', filePath]),
+    git(repo, ['ls-files', '--stage', '-z', '--', filePath]),
+    hashWorktreePath(repo, filePath),
+  ]);
+  return crypto.createHash('sha256').update(JSON.stringify({ head: head.trim(), rawStatus, indexEntry, worktreeHash })).digest('hex');
 }
 
 async function getDiff(repo, filePath, section) {
@@ -536,6 +566,8 @@ module.exports = {
   getRepositoryIdentity,
   parseStatus,
   getState,
+  getRepositoryMutationFingerprint,
+  getFileChangeFingerprint,
   getDiff,
   extractHunks,
   stageFile,

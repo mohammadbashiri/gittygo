@@ -116,6 +116,16 @@ function mutate(action, eventDescriptor = null) {
   return result;
 }
 
+function mutateIfUnchanged(expectedFingerprint, readFingerprint, action, eventDescriptor = null) {
+  return mutate(async () => {
+    const currentFingerprint = await readFingerprint();
+    if (currentFingerprint !== expectedFingerprint) {
+      throw new Error('The repository changed while confirmation was open. Review the latest state and try again.');
+    }
+    return action();
+  }, eventDescriptor);
+}
+
 function registerIpc() {
   ipcMain.handle('repo:state', () => inspect(() => gitService.getState(repository)));
   ipcMain.handle('review:state', () => inspect(() => reviewStore.getReviewState(repositoryIdentity)));
@@ -172,6 +182,7 @@ function registerIpc() {
     mutate(() => gitService.unstageHunk(repository, patch), { type: 'hunkUnstaged', payload: { path: filePath } }),
   );
   ipcMain.handle('repo:discard-hunk', async (_event, patch, filePath) => {
+    const expectedFingerprint = await gitService.getFileChangeFingerprint(repository, filePath);
     const result = await dialog.showMessageBox(mainWindow, {
       type: 'warning',
       buttons: ['Cancel', 'Discard hunk'],
@@ -182,9 +193,15 @@ function registerIpc() {
       detail: 'This cannot be undone by Git.',
     });
     if (result.response !== 1) return { ok: true, result: { cancelled: true } };
-    return mutate(() => gitService.discardHunk(repository, patch), { type: 'hunkDiscarded', payload: { path: filePath } });
+    return mutateIfUnchanged(
+      expectedFingerprint,
+      () => gitService.getFileChangeFingerprint(repository, filePath),
+      () => gitService.discardHunk(repository, patch),
+      { type: 'hunkDiscarded', payload: { path: filePath } },
+    );
   });
   ipcMain.handle('repo:discard-file', async (_event, filePath) => {
+    const expectedFingerprint = await gitService.getFileChangeFingerprint(repository, filePath);
     const result = await dialog.showMessageBox(mainWindow, {
       type: 'warning',
       buttons: ['Cancel', 'Discard file changes'],
@@ -195,7 +212,12 @@ function registerIpc() {
       detail: 'This cannot be undone by Git.',
     });
     if (result.response !== 1) return { ok: true, result: { cancelled: true } };
-    return mutate(() => gitService.discardFile(repository, filePath), { type: 'fileChangesDiscarded', payload: { path: filePath } });
+    return mutateIfUnchanged(
+      expectedFingerprint,
+      () => gitService.getFileChangeFingerprint(repository, filePath),
+      () => gitService.discardFile(repository, filePath),
+      { type: 'fileChangesDiscarded', payload: { path: filePath } },
+    );
   });
   ipcMain.handle('repo:stage-selected', (_event, patch, indexes, section, filePath) =>
     mutate(
@@ -204,8 +226,13 @@ function registerIpc() {
     ),
   );
   ipcMain.handle('repo:commit', async (_event, message, amend = false) => {
+    let expectedFingerprint;
     if (amend) {
-      const state = await gitService.getState(repository);
+      const [state, fingerprint] = await Promise.all([
+        gitService.getState(repository),
+        gitService.getRepositoryMutationFingerprint(repository),
+      ]);
+      expectedFingerprint = fingerprint;
       const answer = await dialog.showMessageBox(mainWindow, {
         type: 'warning', buttons: ['Cancel', 'Amend commit'], defaultId: 0, cancelId: 0,
         title: 'Amend last commit?', message: `Replace commit ${state.head}?`,
@@ -213,12 +240,16 @@ function registerIpc() {
       });
       if (answer.response !== 1) return { ok: true, result: { cancelled: true } };
     }
-    return mutate(
-      () => gitService.commit(repository, message, amend),
-      (_result, before, after) => ({
-        type: amend ? 'commitAmended' : 'commitCreated',
-        payload: { previousHead: before.head, currentHead: after.head },
-      }),
+    const eventDescriptor = (_result, before, after) => ({
+      type: amend ? 'commitAmended' : 'commitCreated',
+      payload: { previousHead: before.head, currentHead: after.head },
+    });
+    if (!amend) return mutate(() => gitService.commit(repository, message, false), eventDescriptor);
+    return mutateIfUnchanged(
+      expectedFingerprint,
+      () => gitService.getRepositoryMutationFingerprint(repository),
+      () => gitService.commit(repository, message, true),
+      eventDescriptor,
     );
   });
   ipcMain.handle('repo:history', (_event, limit) => inspect(() => gitService.getHistory(repository, limit)));
@@ -228,16 +259,24 @@ function registerIpc() {
   ipcMain.handle('repo:branches', () => inspect(() => gitService.getBranches(repository)));
   ipcMain.handle('repo:fetch', () => mutate(() => gitService.fetchRemote(repository), { type: 'fetchCompleted' }));
   ipcMain.handle('repo:pull', async () => {
-    const state = await gitService.getState(repository);
+    const [state, expectedFingerprint] = await Promise.all([
+      gitService.getState(repository),
+      gitService.getRepositoryMutationFingerprint(repository),
+    ]);
     const answer = await dialog.showMessageBox(mainWindow, {
       type: 'question', buttons: ['Cancel', 'Pull'], defaultId: 0, cancelId: 0,
       title: 'Pull changes?', message: `Pull ${state.upstream || 'the configured upstream'} into ${state.branch}?`,
       detail: `Ahead ${state.ahead} · Behind ${state.behind}. Pull is restricted to fast-forward updates.`,
     });
-    return answer.response === 1 ? mutate(() => gitService.pull(repository), { type: 'pullCompleted' }) : { ok: true, result: { cancelled: true } };
+    return answer.response === 1
+      ? mutateIfUnchanged(expectedFingerprint, () => gitService.getRepositoryMutationFingerprint(repository), () => gitService.pull(repository), { type: 'pullCompleted' })
+      : { ok: true, result: { cancelled: true } };
   });
   ipcMain.handle('repo:push', async () => {
-    const state = await gitService.getState(repository);
+    const [state, expectedFingerprint] = await Promise.all([
+      gitService.getState(repository),
+      gitService.getRepositoryMutationFingerprint(repository),
+    ]);
     const remotes = state.upstream ? [] : await gitService.getRemotes(repository);
     const destination = state.upstream || (remotes.length === 1 ? `${remotes[0].name}/${state.branch}` : 'a selected remote');
     const answer = await dialog.showMessageBox(mainWindow, {
@@ -245,10 +284,15 @@ function registerIpc() {
       title: 'Push commits?', message: `Push ${state.branch} to ${destination}?`,
       detail: `Ahead ${state.ahead} · Behind ${state.behind}`,
     });
-    return answer.response === 1 ? mutate(() => gitService.push(repository), { type: 'pushCompleted' }) : { ok: true, result: { cancelled: true } };
+    return answer.response === 1
+      ? mutateIfUnchanged(expectedFingerprint, () => gitService.getRepositoryMutationFingerprint(repository), () => gitService.push(repository), { type: 'pushCompleted' })
+      : { ok: true, result: { cancelled: true } };
   });
   ipcMain.handle('repo:undo-commit', async () => {
-    const state = await gitService.getState(repository);
+    const [state, expectedFingerprint] = await Promise.all([
+      gitService.getState(repository),
+      gitService.getRepositoryMutationFingerprint(repository),
+    ]);
     const answer = await dialog.showMessageBox(mainWindow, {
       type: 'warning',
       buttons: ['Cancel', 'Keep changes staged', 'Keep changes unstaged'],
@@ -261,7 +305,9 @@ function registerIpc() {
     });
     if (answer.response === 0) return { ok: true, result: { cancelled: true } };
     const keepStaged = answer.response === 1;
-    return mutate(
+    return mutateIfUnchanged(
+      expectedFingerprint,
+      () => gitService.getRepositoryMutationFingerprint(repository),
       () => gitService.undoLastCommit(repository, keepStaged),
       (_result, before, after) => ({
         type: 'commitUndone',
@@ -271,11 +317,14 @@ function registerIpc() {
   });
   ipcMain.handle('repo:add-remote', (_event, name, url) => mutate(() => gitService.addRemote(repository, name, url), { type: 'remoteAdded', payload: { name } }));
   ipcMain.handle('repo:remove-remote', async (_event, name) => {
+    const expectedFingerprint = await gitService.getRepositoryMutationFingerprint(repository);
     const answer = await dialog.showMessageBox(mainWindow, {
       type: 'warning', buttons: ['Cancel', 'Remove remote'], defaultId: 0, cancelId: 0,
       title: 'Remove remote?', message: `Remove remote “${name}”?`, detail: 'This changes repository configuration but does not delete remote data.',
     });
-    return answer.response === 1 ? mutate(() => gitService.removeRemote(repository, name), { type: 'remoteRemoved', payload: { name } }) : { ok: true, result: { cancelled: true } };
+    return answer.response === 1
+      ? mutateIfUnchanged(expectedFingerprint, () => gitService.getRepositoryMutationFingerprint(repository), () => gitService.removeRemote(repository, name), { type: 'remoteRemoved', payload: { name } })
+      : { ok: true, result: { cancelled: true } };
   });
   ipcMain.handle('repo:switch-branch', (_event, name) => mutate(
     () => gitService.switchBranch(repository, name),

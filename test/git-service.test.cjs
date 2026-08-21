@@ -43,6 +43,27 @@ test('repository state separates staged and unstaged files', async (t) => {
   assert.equal(state.staged[0].path, 'new.txt');
 });
 
+test('mutation fingerprints detect content and index changes', async (t) => {
+  const repo = createRepo();
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  const file = path.join(repo, 'sample.txt');
+  fs.appendFileSync(file, 'first change\n');
+  const repositoryBefore = await git.getRepositoryMutationFingerprint(repo);
+  const fileBefore = await git.getFileChangeFingerprint(repo, 'sample.txt');
+
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('first change', 'other change'));
+  assert.notEqual(await git.getRepositoryMutationFingerprint(repo), repositoryBefore);
+  assert.notEqual(await git.getFileChangeFingerprint(repo, 'sample.txt'), fileBefore);
+
+  const beforeStage = await git.getRepositoryMutationFingerprint(repo);
+  await git.stageFile(repo, 'sample.txt');
+  assert.notEqual(await git.getRepositoryMutationFingerprint(repo), beforeStage);
+
+  const beforeRemote = await git.getRepositoryMutationFingerprint(repo);
+  command(repo, ['remote', 'add', 'origin', 'https://example.test/one.git']);
+  assert.notEqual(await git.getRepositoryMutationFingerprint(repo), beforeRemote);
+});
+
 test('all changes can be staged and unstaged together', async (t) => {
   const repo = createRepo();
   t.after(() => fs.rmSync(repo, { recursive: true, force: true }));

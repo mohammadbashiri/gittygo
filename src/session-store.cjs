@@ -4,6 +4,7 @@ const path = require('node:path');
 const { stateRoot } = require('./state-root.cjs');
 const gitService = require('./git-service.cjs');
 const reviewStore = require('./review-store.cjs');
+const { withFileLock } = require('./file-lock.cjs');
 
 const MAX_EVENTS_PER_RESPONSE = 100;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -19,27 +20,10 @@ function focusRequestFile(sessionId) { return path.join(sessionDirectory(session
 function commitMessageRequestFile(sessionId) { return path.join(sessionDirectory(sessionId), 'commit-message-request.json'); }
 function sessionLockFile(sessionId) { return path.join(sessionDirectory(sessionId), 'session.lock'); }
 
-const LOCK_TIMEOUT_MS = 3000;
-const STALE_LOCK_MS = 30000;
-
-async function withSessionLock(sessionId, action) {
-  const lockPath = sessionLockFile(sessionId); const deadline = Date.now() + LOCK_TIMEOUT_MS;
-  while (true) {
-    let handle;
-    try {
-      handle = await fs.open(lockPath, 'wx', 0o600);
-      await handle.writeFile(`${process.pid}\n${Date.now()}\n`);
-      try { return await action(); }
-      finally { await handle.close(); await fs.rm(lockPath, { force: true }); }
-    } catch (error) {
-      if (handle) await handle.close().catch(() => {});
-      if (error.code !== 'EEXIST') throw error;
-      const stat = await fs.stat(lockPath).catch(() => null);
-      if (stat && Date.now() - stat.mtimeMs > STALE_LOCK_MS) { await fs.rm(lockPath, { force: true }); continue; }
-      if (Date.now() >= deadline) throw new Error('Timed out waiting for the GittyGo session lock.');
-      await new Promise((resolve) => setTimeout(resolve, 15));
-    }
-  }
+function withSessionLock(sessionId, action) {
+  return withFileLock(sessionLockFile(sessionId), action, {
+    timeoutMessage: 'Timed out waiting for the GittyGo session lock.',
+  });
 }
 
 async function writeJsonSecure(filePath, value) {
@@ -124,12 +108,26 @@ async function loadSession(sessionId) {
   return session;
 }
 
+async function appendTextDurable(filePath, value) {
+  const handle = await fs.open(filePath, 'a', 0o600);
+  try {
+    await handle.writeFile(value);
+    await handle.sync();
+  } finally { await handle.close(); }
+}
+
 async function appendEvent(sessionId, event, state) {
   return withSessionLock(sessionId, async () => {
     const session = await loadSession(sessionId);
+    const journal = await readEventJournal(sessionId);
+    if (journal.needsRepair) {
+      const repaired = journal.events.length ? `${journal.events.map((item) => JSON.stringify(item)).join('\n')}\n` : '';
+      await writeTextSecure(eventsFile(sessionId), repaired);
+    }
     const snapshot = snapshotFromState(state || await gitService.getState(session.worktreeRoot));
+    const nextSequence = journal.events.length ? journal.events.at(-1).seq + 1 : 1;
     const record = {
-      seq: session.nextSequence,
+      seq: nextSequence,
       eventId: crypto.randomUUID(),
       time: new Date().toISOString(),
       actor: event.actor || 'user-ui',
@@ -144,8 +142,8 @@ async function appendEvent(sessionId, event, state) {
         fingerprint: snapshot.fingerprint,
       },
     };
-    await fs.appendFile(eventsFile(sessionId), `${JSON.stringify(record)}\n`, { mode: 0o600 });
-    session.nextSequence += 1;
+    await appendTextDurable(eventsFile(sessionId), `${JSON.stringify(record)}\n`);
+    session.nextSequence = nextSequence + 1;
     session.lastEventFingerprint = snapshot.fingerprint;
     await writeJsonSecure(sessionFile(sessionId), session);
     return record;
@@ -189,12 +187,41 @@ async function consumeCommitMessage(sessionId) {
   return request;
 }
 
-async function readEvents(sessionId) {
+async function writeTextSecure(filePath, value) {
+  const temporary = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  await fs.writeFile(temporary, value, { mode: 0o600 });
+  await fs.rename(temporary, filePath);
+  await fs.chmod(filePath, 0o600);
+}
+
+async function readEventJournal(sessionId) {
   const raw = await fs.readFile(eventsFile(sessionId), 'utf8').catch((error) => {
     if (error.code === 'ENOENT') return '';
     throw error;
   });
-  return raw.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  const lines = raw.split('\n');
+  const events = [];
+  let needsRepair = Boolean(raw && !raw.endsWith('\n'));
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index]) continue;
+    try {
+      const event = JSON.parse(lines[index]);
+      const previous = events.at(-1);
+      if (!Number.isSafeInteger(event.seq) || event.seq < 1 || (previous && event.seq <= previous.seq)) {
+        throw new Error('Event sequence is not strictly increasing.');
+      }
+      events.push(event);
+    } catch (error) {
+      const isIncompleteTail = index === lines.length - 1 && !raw.endsWith('\n');
+      if (isIncompleteTail) { needsRepair = true; break; }
+      throw new Error(`GittyGo session event journal is corrupt: ${error.message}`);
+    }
+  }
+  return { events, needsRepair };
+}
+
+async function readEvents(sessionId) {
+  return (await readEventJournal(sessionId)).events;
 }
 
 function coalesceEvents(events) {
@@ -231,8 +258,11 @@ function coalesceEvents(events) {
 async function getContext(sessionId, after = 0) {
   const cursor = Number(after);
   if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error('Cursor must be a non-negative integer.');
-  const session = await loadSession(sessionId);
-  const allPending = (await readEvents(sessionId)).filter((event) => event.seq > cursor);
+  const { session, events: recordedEvents } = await withSessionLock(sessionId, async () => ({
+    session: await loadSession(sessionId),
+    events: await readEvents(sessionId),
+  }));
+  const allPending = recordedEvents.filter((event) => event.seq > cursor);
   const rawEvents = allPending.slice(0, MAX_EVENTS_PER_RESPONSE);
   const events = coalesceEvents(rawEvents);
   const [state, review] = await Promise.all([

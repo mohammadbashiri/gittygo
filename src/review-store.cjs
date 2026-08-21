@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { stateRoot } = require('./state-root.cjs');
+const { withFileLock } = require('./file-lock.cjs');
 
 function reviewDirectory(repoIdentity) {
   if (!/^[a-f0-9]{64}$/.test(repoIdentity)) throw new Error('Invalid repository identity.');
@@ -9,6 +10,7 @@ function reviewDirectory(repoIdentity) {
 }
 
 function reviewFile(repoIdentity) { return path.join(reviewDirectory(repoIdentity), 'review.json'); }
+function reviewLockFile(repoIdentity) { return path.join(reviewDirectory(repoIdentity), 'review.lock'); }
 function emptyState(repoIdentity) { return { version: 2, repoIdentity, comments: [] }; }
 
 function normalizeState(value, repoIdentity) {
@@ -36,17 +38,23 @@ async function loadState(repoIdentity) {
   return normalizeState(value, repoIdentity);
 }
 
+async function withReviewLock(repoIdentity, action) {
+  const directory = reviewDirectory(repoIdentity);
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  await fs.chmod(directory, 0o700);
+  return withFileLock(reviewLockFile(repoIdentity), action, {
+    timeoutMessage: 'Timed out waiting for the GittyGo review lock.',
+  });
+}
+
 let updateQueue = Promise.resolve();
 function updateState(repoIdentity, mutate) {
-  const operation = updateQueue.then(async () => {
-    const directory = reviewDirectory(repoIdentity);
-    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-    await fs.chmod(directory, 0o700);
+  const operation = updateQueue.then(() => withReviewLock(repoIdentity, async () => {
     const state = await loadState(repoIdentity);
     const result = await mutate(state);
     await writeJsonSecure(reviewFile(repoIdentity), state);
     return { state, result };
-  });
+  }));
   updateQueue = operation.then(() => undefined, () => undefined);
   return operation;
 }
