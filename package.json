@@ -3,6 +3,7 @@
   "productName": "GittyGo",
   "version": "0.1.0-alpha.1",
   "description": "Git review for humans and agents.",
+  "license": "MIT",
   "author": {
     "name": "Mohammad Bashiri",
     "email": "mohammadbashiri93@gmail.com"

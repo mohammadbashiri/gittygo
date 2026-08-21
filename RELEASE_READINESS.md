@@ -9,7 +9,7 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 | Target | Status | Reason |
 |---|---|---|
 | Local development use | ✅ Ready | Core workflows work; 21 automated tests pass. |
-| Unsigned `0.1.0-alpha.1` GitHub alpha | 🔴 Not ready | Final icon/license, GitHub publication, complete packaged smoke testing, and clean-user testing remain. |
+| Unsigned `0.1.0-alpha.1` GitHub alpha | 🔴 Not ready | Final icon, GitHub publication, complete packaged smoke testing, and clean-user testing remain. |
 | Public developer preview | 🔴 Not ready | Private-alpha gates plus broader security, compatibility, documentation, and tester feedback remain. |
 
 ## 1. Product foundation
@@ -22,7 +22,7 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 | Untouched history backup exists | ✅ | `/Users/mo/Projects/agentic-ui-tools-pre-gittygo.bundle` verified as complete. |
 | Canonical portable agent skill | ✅ | `skills/gittygo/SKILL.md`; explicit invocation only, normal Git commands remain the agent interface. |
 | Versioning policy | ✅ | Package and planned first tag use `0.1.0-alpha.1` / `v0.1.0-alpha.1`. |
-| License selected and included | 🔴 | No license file yet; choose and add a license before distributing binaries. |
+| License selected and included | ✅ | MIT License, copyright © 2026 Mohammad Bashiri; package metadata declares MIT. |
 
 ## 2. Core correctness and data safety
 
