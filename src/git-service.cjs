@@ -51,7 +51,21 @@ async function resolveRepository(inputPath) {
   const stat = await fs.stat(candidate).catch(() => null);
   const cwd = stat?.isFile() ? path.dirname(candidate) : candidate;
   const root = (await git(cwd, ['rev-parse', '--show-toplevel'])).trim();
-  return path.resolve(root);
+  return fs.realpath(path.resolve(root));
+}
+
+async function getRepositoryIdentity(inputPath) {
+  const worktreeRoot = await resolveRepository(inputPath);
+  const [gitDirectoryValue, gitCommonDirectoryValue] = await Promise.all([
+    git(worktreeRoot, ['rev-parse', '--git-dir']),
+    git(worktreeRoot, ['rev-parse', '--git-common-dir']),
+  ]);
+  const gitDirectory = await fs.realpath(path.resolve(worktreeRoot, gitDirectoryValue.trim()));
+  const gitCommonDirectory = await fs.realpath(path.resolve(worktreeRoot, gitCommonDirectoryValue.trim()));
+  const repoIdentity = require('node:crypto').createHash('sha256')
+    .update(`${gitCommonDirectory}\0${worktreeRoot}`)
+    .digest('hex');
+  return { worktreeRoot, gitDirectory, gitCommonDirectory, repoIdentity };
 }
 
 function parseStatus(raw) {
@@ -399,6 +413,7 @@ async function createBranch(repo, name) {
 module.exports = {
   GitError,
   resolveRepository,
+  getRepositoryIdentity,
   parseStatus,
   getState,
   getDiff,

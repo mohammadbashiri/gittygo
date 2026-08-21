@@ -28,19 +28,29 @@ npm install
 npm start -- /path/to/repository
 ```
 
-To exercise the agent-style non-blocking launcher:
+To install the non-blocking CLI locally:
 
 ```bash
 npm link
 cd /path/to/repository
-git-review
+git-review open . --json
 ```
 
-The launcher prints a small JSON acknowledgement and immediately returns control to the caller. Use `git-review . --wait` when a blocking process is preferred.
+The launcher opens the live window, immediately returns control to the caller, and prints a repository-bound session ID, cursor, authoritative initial snapshot, and generic agent instruction.
+
+While the window remains active, any shell-capable agent can retrieve UI actions and current repository state without a harness-specific integration:
+
+```bash
+git-review context --session <session-id> --after <cursor> --json
+```
+
+The response contains ordered semantic events, an authoritative snapshot, and `nextCursor`. The agent retains `nextCursor` for its next query. Repeating a cursor is safe. Run `git-review instructions` to print the protocol instructions separately.
+
+`git-review .` remains shorthand for `git-review open .`. Use `--wait` only when a blocking process is explicitly desired.
 
 ## Product boundary
 
-This repository currently builds one tool: visual Git review. It is not an IDE, a general agent UI framework, or an automatic workflow system. Portable skill and MCP integrations will come after the core review experience is solid.
+This repository currently builds one tool: visual Git review. It is not an IDE, a general agent UI framework, or an automatic workflow system. Agent coordination uses a self-describing CLI pull protocol so the tool remains independent of Pi, Claude, Codex, MCP, or any other harness.
 
 ## Development
 

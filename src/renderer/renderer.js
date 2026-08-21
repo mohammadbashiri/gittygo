@@ -106,8 +106,8 @@ function renderSplitLines(hunk) {
 }
 function bindHunkActions() {
   ui.content.querySelectorAll('.hunk').forEach((element) => { const hunk = model.diff.hunks[Number(element.dataset.hunk)];
-    element.querySelector('.toggle-hunk').addEventListener('click', async () => { const staged = model.selected.section === 'staged'; await unwrap(staged ? window.gitReview.unstageHunk(hunk.patch) : window.gitReview.stageHunk(hunk.patch), staged ? 'Hunk unstaged' : 'Hunk staged'); });
-    element.querySelector('.discard-hunk')?.addEventListener('click', () => unwrap(window.gitReview.discardHunk(hunk.patch), 'Hunk discarded'));
+    element.querySelector('.toggle-hunk').addEventListener('click', async () => { const staged = model.selected.section === 'staged'; await unwrap(staged ? window.gitReview.unstageHunk(hunk.patch, model.selected.path) : window.gitReview.stageHunk(hunk.patch, model.selected.path), staged ? 'Hunk unstaged' : 'Hunk staged'); });
+    element.querySelector('.discard-hunk')?.addEventListener('click', () => unwrap(window.gitReview.discardHunk(hunk.patch, model.selected.path), 'Hunk discarded'));
   });
 }
 
@@ -132,7 +132,7 @@ function updateSelectionUi() {
 }
 ui.applySelection.addEventListener('click', async () => {
   if (!model.selectedLines?.indexes.size) return; const hunk = model.diff.hunks[model.selectedLines.hunkId];
-  const result = await unwrap(window.gitReview.stageSelected(hunk.patch, [...model.selectedLines.indexes], model.selected.section), model.selected.section === 'staged' ? 'Selected lines unstaged' : 'Selected lines staged');
+  const result = await unwrap(window.gitReview.stageSelected(hunk.patch, [...model.selectedLines.indexes], model.selected.section, model.selected.path), model.selected.section === 'staged' ? 'Selected lines unstaged' : 'Selected lines staged');
   if (result !== null) clearLineSelection();
 });
 $('#clear-selection').addEventListener('click', () => { clearLineSelection(); renderReview(); });
@@ -163,7 +163,7 @@ async function loadHistory() {
   ui.historyList.innerHTML = history.length ? model.history.map((commit) => {
     const width = Math.max(1, commit.laneCount) * 16 + 12;
     const lines = Array.from({ length: commit.laneCount }, (_, lane) => `<i class="graph-line" style="left:${lane * 16 + 8}px"></i>`).join('');
-    return `<button class="commit-row ${model.selectedCommit === commit.hash ? 'selected' : ''}" style="--graph-width:${width}px" data-commit="${commit.hash}"><span class="graph-cell">${lines}<i class="graph-dot" style="left:${commit.lane * 16 + 3}px"></i></span><span class="commit-main"><span class="commit-subject">${escapeHtml(commit.subject)}</span><span class="commit-meta"><span>${escapeHtml(commit.author)}</span><span>${formatRelativeDate(commit.date)}</span></span>${commit.refs.length ? `<span class="ref-badges">${commit.refs.map((ref) => `<i class="ref-badge">${escapeHtml(ref.replace(/^HEAD -> /, ''))}</i>`).join('')}</span>` : ''}</span><span class="commit-hash">${commit.shortHash}</span></button>`;
+    return `<button class="commit-row ${model.selectedCommit === commit.hash ? 'selected' : ''}" style="--graph-width:${width}px" data-commit="${commit.hash}"><span class="graph-cell">${lines}<i class="graph-dot" style="left:${commit.lane * 16 + 8}px"></i></span><span class="commit-main"><span class="commit-subject">${escapeHtml(commit.subject)}</span><span class="commit-meta"><span>${escapeHtml(commit.author)}</span><span>${formatRelativeDate(commit.date)}</span></span>${commit.refs.length ? `<span class="ref-badges">${commit.refs.map((ref) => `<i class="ref-badge">${escapeHtml(ref.replace(/^HEAD -> /, ''))}</i>`).join('')}</span>` : ''}</span><span class="commit-hash">${commit.shortHash}</span></button>`;
   }).join('') : '<div class="empty-sidebar">No commits yet.</div>'; 
 }
 function layoutHistory(commits) {
