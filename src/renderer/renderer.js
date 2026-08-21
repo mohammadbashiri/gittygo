@@ -5,10 +5,10 @@ const ui = {
   selectedStatus: $('#selected-status'), selectedPath: $('#selected-path'), fileAction: $('#file-action'), discardFile: $('#discard-file'),
   content: $('#content'), toast: $('#toast'), historyList: $('#history-list'), historyDetail: $('#history-detail'), historyCount: $('#history-count'),
   moreMenu: $('#more-menu'), branchPopover: $('#branch-popover'), branchList: $('#branch-list'), modal: $('#modal-backdrop'), modalContent: $('#modal-content'),
-  selectionAction: $('#selection-action'), selectionCount: $('#selection-count'), applySelection: $('#apply-selection'),
+  selectionAction: $('#selection-action'), selectionCount: $('#selection-count'), applySelection: $('#apply-selection'), addComment: $('#add-comment'),
 };
 
-const model = { repo: null, selected: null, diff: null, layout: 'unified', busy: false, view: 'changes', history: [], selectedCommit: null, commitDetail: null, selectedCommitFile: null, commitFileDiff: null, selectedLines: null, selectionAnchor: null };
+const model = { repo: null, selected: null, diff: null, layout: 'unified', busy: false, view: 'changes', history: [], selectedCommit: null, commitDetail: null, selectedCommitFile: null, commitFileDiff: null, selectedLines: null, selectionAnchor: null, selectionSide: null, review: { comments: [], openCommentCount: 0 }, commentComposer: null };
 const sidebarState = {
   changes: {
     collapsed: localStorage.getItem('git-review:sidebar:changes') === 'collapsed',
@@ -108,10 +108,14 @@ async function unwrap(promise, successMessage) {
   finally { model.busy = false; }
 }
 
+function allReviewComments() { return model.review.comments || []; }
+function reviewCommentsForFile(file) {
+  return allReviewComments().filter((comment) => comment.anchor.path === file.path && comment.anchor.section === file.section);
+}
 function renderFiles() {
   const groups = [{ title: 'Staged Changes', files: model.repo.staged }, { title: 'Changes', files: model.repo.changes }].filter((group) => group.files.length);
   if (!groups.length) { ui.groups.innerHTML = '<div class="empty-sidebar"><strong>Working tree clean</strong>There are no changes to review.</div>'; return; }
-  ui.groups.innerHTML = groups.map((group) => `<section class="group"><header class="group-heading"><span>${group.title}</span><span class="count">${group.files.length}</span></header>${group.files.map((file) => `<button class="file-row ${file.conflicted ? 'conflicted' : ''} ${model.selected && fileKey(file) === fileKey(model.selected) ? 'selected' : ''}" data-file-key="${escapeHtml(fileKey(file))}" title="${file.conflicted ? 'Conflict: resolve outside Git Review before staging' : escapeHtml(file.path)}"><span class="file-status ${escapeHtml(file.status)}">${escapeHtml(file.status)}</span><span class="file-path" title="${escapeHtml(file.path)}"><span class="file-dir">${escapeHtml(dirname(file.path))}</span>${escapeHtml(basename(file.path))}</span><span class="row-action" title="${file.section === 'staged' ? 'Unstage' : 'Stage'}">${file.section === 'staged' ? '−' : '+'}</span></button>`).join('')}</section>`).join('');
+  ui.groups.innerHTML = groups.map((group) => `<section class="group"><header class="group-heading"><span>${group.title}</span><span class="count">${group.files.length}</span></header>${group.files.map((file) => `<button class="file-row ${file.conflicted ? 'conflicted' : ''} ${model.selected && fileKey(file) === fileKey(model.selected) ? 'selected' : ''}" data-file-key="${escapeHtml(fileKey(file))}" title="${file.conflicted ? 'Conflict: resolve outside Git Review before staging' : escapeHtml(file.path)}"><span class="file-status ${escapeHtml(file.status)}">${escapeHtml(file.status)}</span><span class="file-path" title="${escapeHtml(file.path)}"><span class="file-dir">${escapeHtml(dirname(file.path))}</span>${escapeHtml(basename(file.path))}</span><span class="row-action" title="${file.section === 'staged' ? 'Unstage' : 'Stage'}">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length ? `<i class="comment-count">${reviewCommentsForFile(file).filter((comment) => comment.status === 'open').length}</i>` : ''}${file.section === 'staged' ? '−' : '+'}</span></button>`).join('')}</section>`).join('');
 }
 
 ui.groups.addEventListener('pointerdown', (event) => {
@@ -154,35 +158,59 @@ function renderReview() {
   if (!model.diff) return;
   if (model.diff.binary) { ui.content.innerHTML = '<div class="empty-diff">Binary file changed. Diff preview is unavailable.</div>'; return; }
   if (!model.diff.patch) { ui.content.innerHTML = '<div class="empty-diff">No textual changes to display.</div>'; return; }
-  ui.content.innerHTML = renderDiff(model.diff.patch, model.diff.hunks, model.selected.section, model.layout); bindHunkActions(); updateSelectionUi();
+  ui.content.innerHTML = renderDiff(model.diff.patch, model.diff.hunks, model.selected.section, model.layout); bindHunkActions(); bindReviewEvents(); updateSelectionUi();
 }
 function parseHunkRange(header) { const match = header.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/); return match ? { old: Number(match[1]), next: Number(match[3]) } : { old: 0, next: 0 }; }
 function splitPatch(patch) { const lines = patch.split('\n'); const first = lines.findIndex((line) => line.startsWith('@@ ')); return { header: first < 0 ? lines : lines.slice(0, first) }; }
 function renderDiff(patch, hunks, section, layout, readOnly = false) {
   const usefulHeader = splitPatch(patch).header.filter((line) => line.startsWith('diff ') || line.startsWith('--- ') || line.startsWith('+++ '));
-  return `<div class="diff ${layout}${readOnly ? ' read-only' : ''}"><div class="file-header">${usefulHeader.map(escapeHtml).join('\n')}</div>${hunks.map((hunk) => renderHunk(hunk, section, layout, readOnly)).join('')}</div>`;
+  const unlocated = readOnly ? '' : renderUnlocatedComments(hunks);
+  return `<div class="diff ${layout}${readOnly ? ' read-only' : ''}"><div class="file-header">${usefulHeader.map(escapeHtml).join('\n')}</div>${unlocated}${hunks.map((hunk) => renderHunk(hunk, section, layout, readOnly)).join('')}</div>`;
+}
+function renderUnlocatedComments(hunks) {
+  if (!model.selected) return '';
+  const comments = reviewCommentsForFile(model.selected).filter((comment) => {
+    const hunk = hunks.find((item) => item.header === comment.anchor.hunkHeader);
+    return !hunk || comment.anchor.endIndex >= hunk.lines.length;
+  });
+  if (!comments.length) return '';
+  return `<section class="unlocated-comments"><header><strong>Location changed</strong><span>${comments.length} ${comments.length === 1 ? 'comment no longer matches' : 'comments no longer match'} the current diff</span></header>${comments.map(renderReviewThread).join('')}</section>`;
 }
 function renderHunk(hunk, section, layout, readOnly = false) {
   const action = section === 'staged' ? 'Unstage hunk' : 'Stage hunk';
   const actions = readOnly ? '' : `<span class="hunk-actions"><button class="toggle-hunk">${action}</button>${section === 'unstaged' ? '<button class="discard-hunk">Discard</button>' : ''}</span>`;
-  return `<section class="hunk" data-hunk="${hunk.id}"><header class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${actions}</header>${layout === 'split' ? renderSplitLines(hunk) : renderUnifiedLines(hunk, readOnly)}</section>`;
+  return `<section class="hunk" data-hunk="${hunk.id}"><header class="hunk-header"><span>${escapeHtml(hunk.header)}</span>${actions}</header>${layout === 'split' ? renderSplitLines(hunk, readOnly) : renderUnifiedLines(hunk, readOnly)}</section>`;
 }
 function renderUnifiedLines(hunk, readOnly = false) {
   const range = parseHunkRange(hunk.header); let oldLine = range.old; let newLine = range.next;
+  const comments = readOnly || !model.selected ? [] : reviewCommentsForFile(model.selected).filter((comment) => comment.anchor.hunkHeader === hunk.header);
   return hunk.lines.map((line, index) => {
     if (line === '' && index === hunk.lines.length - 1) return '';
     const marker = line[0] || ' '; const metadata = marker === '\\'; const kind = marker === '+' ? 'add' : marker === '-' ? 'del' : 'context';
     const oldNumber = metadata || marker === '+' ? '' : oldLine++; const newNumber = metadata || marker === '-' ? '' : newLine++;
-    const selectable = !readOnly && (marker === '+' || marker === '-'); const selected = model.selectedLines?.hunkId === hunk.id && model.selectedLines.indexes.has(index);
-    return `<div class="diff-row ${kind}${selectable ? ' selectable' : ''}${selected ? ' line-selected' : ''}" ${selectable ? `data-hunk="${hunk.id}" data-line="${index}" title="Click to select; Shift-click to select a range"` : ''}><span class="line-no">${oldNumber}</span><span class="line-no">${newNumber}</span><span class="marker">${metadata ? '' : escapeHtml(marker)}</span><span class="code">${escapeHtml(metadata ? line : line.slice(1))}</span></div>`;
+    const selectable = !readOnly && !metadata; const selected = model.selectedLines?.hunkId === hunk.id && model.selectedLines.indexes.has(index);
+    const row = `<div class="diff-row ${kind}${selectable ? ' selectable' : ''}${selected ? ' line-selected' : ''}" ${selectable ? `data-hunk="${hunk.id}" data-line="${index}" title="Click to select; Shift-click to select a range"` : ''}><span class="line-no">${oldNumber}</span><span class="line-no">${newNumber}</span><span class="marker">${metadata ? '' : escapeHtml(marker)}</span><span class="code">${escapeHtml(metadata ? line : line.slice(1))}</span></div>`;
+    const threads = comments.filter((comment) => comment.anchor.endIndex === index).map(renderReviewThread).join('');
+    const composer = model.commentComposer?.anchor?.hunkId === hunk.id && model.commentComposer.anchor.endIndex === index ? renderCommentComposer() : '';
+    return `${row}${threads}${composer}`;
   }).join('');
 }
-function renderSplitLines(hunk) {
+function renderSplitLines(hunk, readOnly = false) {
   const range = parseHunkRange(hunk.header); let oldLine = range.old; let newLine = range.next; const rows = []; let removed = []; let added = [];
   const flush = () => { const length = Math.max(removed.length, added.length); for (let i = 0; i < length; i += 1) rows.push({ left: removed[i] || null, right: added[i] || null }); removed = []; added = []; };
-  hunk.lines.forEach((line, index) => { if (line === '' && index === hunk.lines.length - 1) return; if (line.startsWith('-')) removed.push({ number: oldLine++, text: line.slice(1), kind: 'del', marker: '−' }); else if (line.startsWith('+')) added.push({ number: newLine++, text: line.slice(1), kind: 'add', marker: '+' }); else { flush(); const text = line.startsWith('\\') ? line : line.slice(1); rows.push({ left: { number: line.startsWith('\\') ? '' : oldLine++, text, kind: 'context', marker: '' }, right: { number: line.startsWith('\\') ? '' : newLine++, text, kind: 'context', marker: '' } }); } }); flush();
-  const cell = (value) => value ? `<div class="split-cell ${value.kind}"><span class="line-no">${value.number}</span><span class="marker">${value.marker}</span><span class="code">${escapeHtml(value.text)}</span></div>` : '<div class="split-cell empty"></div>';
-  return rows.map((row) => `<div class="split-row">${cell(row.left)}${cell(row.right)}</div>`).join('');
+  hunk.lines.forEach((line, index) => { if (line === '' && index === hunk.lines.length - 1) return; if (line.startsWith('-')) removed.push({ index, number: oldLine++, text: line.slice(1), kind: 'del', marker: '−' }); else if (line.startsWith('+')) added.push({ index, number: newLine++, text: line.slice(1), kind: 'add', marker: '+' }); else { flush(); const metadata = line.startsWith('\\'); const text = metadata ? line : line.slice(1); rows.push({ left: { index, number: metadata ? '' : oldLine++, text, kind: 'context', marker: '', metadata }, right: { index, number: metadata ? '' : newLine++, text, kind: 'context', marker: '', metadata } }); } }); flush();
+  const comments = readOnly || !model.selected ? [] : reviewCommentsForFile(model.selected).filter((comment) => comment.anchor.hunkHeader === hunk.header);
+  const cell = (value, side) => {
+    if (!value) return '<div class="split-cell empty"></div>';
+    const selectable = !readOnly && !value.metadata; const selected = model.selectedLines?.hunkId === hunk.id && model.selectedLines.indexes.has(value.index) && model.selectionSide === side;
+    return `<div class="split-cell ${value.kind}${selectable ? ' selectable' : ''}${selected ? ' line-selected' : ''}" ${selectable ? `data-hunk="${hunk.id}" data-line="${value.index}" data-side="${side}" title="Click to select; Shift-click to select a range"` : ''}><span class="line-no">${value.number}</span><span class="marker">${value.marker}</span><span class="code">${escapeHtml(value.text)}</span></div>`;
+  };
+  return rows.map((row) => {
+    const indexes = [row.left?.index, row.right?.index].filter((value) => value != null);
+    const threads = comments.filter((comment) => indexes.includes(comment.anchor.endIndex)).map(renderReviewThread).join('');
+    const composer = model.commentComposer?.anchor?.hunkId === hunk.id && indexes.includes(model.commentComposer.anchor.endIndex) ? renderCommentComposer() : '';
+    return `<div class="split-row">${cell(row.left, 'old')}${cell(row.right, 'new')}</div>${threads}${composer}`;
+  }).join('');
 }
 function bindHunkActions() {
   ui.content.querySelectorAll('.hunk').forEach((element) => { const hunk = model.diff.hunks[Number(element.dataset.hunk)];
@@ -192,30 +220,96 @@ function bindHunkActions() {
 }
 
 ui.content.addEventListener('pointerdown', (event) => {
-  const row = event.target.closest('.diff-row.selectable'); if (!row || model.layout !== 'unified') return; event.preventDefault();
-  const hunkId = Number(row.dataset.hunk); const line = Number(row.dataset.line); const hunk = model.diff.hunks[hunkId];
-  if (!model.selectedLines || model.selectedLines.hunkId !== hunkId) model.selectedLines = { hunkId, indexes: new Set() };
-  if (event.shiftKey && model.selectionAnchor?.hunkId === hunkId) {
+  const row = event.target.closest('.diff-row.selectable, .split-cell.selectable'); if (!row) return; event.preventDefault();
+  const hunkId = Number(row.dataset.hunk); const line = Number(row.dataset.line); const side = row.dataset.side || 'both'; const hunk = model.diff.hunks[hunkId];
+  if (!model.selectedLines || model.selectedLines.hunkId !== hunkId || model.selectionSide !== side) { model.selectedLines = { hunkId, indexes: new Set() }; model.selectionSide = side; }
+  if (event.shiftKey && model.selectionAnchor?.hunkId === hunkId && model.selectionAnchor.side === side) {
     const [start, end] = [model.selectionAnchor.line, line].sort((a, b) => a - b);
-    hunk.lines.forEach((text, index) => { if (index >= start && index <= end && ['+', '-'].includes(text[0])) model.selectedLines.indexes.add(index); });
+    hunk.lines.forEach((text, index) => { if (index >= start && index <= end && !text.startsWith('\\')) model.selectedLines.indexes.add(index); });
   } else {
     if (model.selectedLines.indexes.has(line)) model.selectedLines.indexes.delete(line); else model.selectedLines.indexes.add(line);
-    model.selectionAnchor = { hunkId, line };
+    model.selectionAnchor = { hunkId, line, side };
   }
   renderReview();
 });
-function clearLineSelection() { model.selectedLines = null; model.selectionAnchor = null; ui.selectionAction.classList.add('hidden'); }
+function clearLineSelection() { model.selectedLines = null; model.selectionAnchor = null; model.selectionSide = null; ui.selectionAction.classList.add('hidden'); }
+function selectedChangedLineCount() {
+  if (!model.selectedLines) return 0;
+  const hunk = model.diff.hunks[model.selectedLines.hunkId];
+  return [...model.selectedLines.indexes].filter((index) => ['+', '-'].includes(hunk.lines[index]?.[0])).length;
+}
 function updateSelectionUi() {
   const count = model.selectedLines?.indexes.size || 0; ui.selectionAction.classList.toggle('hidden', count === 0); if (!count) return;
-  ui.selectionCount.textContent = `${count} changed ${count === 1 ? 'line' : 'lines'} selected`;
+  ui.selectionCount.textContent = `${count} ${count === 1 ? 'line' : 'lines'} selected`;
+  const changedCount = selectedChangedLineCount();
+  ui.applySelection.classList.toggle('hidden', changedCount === 0);
   ui.applySelection.textContent = model.selected.section === 'staged' ? 'Unstage selected' : 'Stage selected';
 }
 ui.applySelection.addEventListener('click', async () => {
-  if (!model.selectedLines?.indexes.size) return; const hunk = model.diff.hunks[model.selectedLines.hunkId];
+  if (!model.selectedLines?.indexes.size || !selectedChangedLineCount()) return; const hunk = model.diff.hunks[model.selectedLines.hunkId];
   const result = await unwrap(window.gitReview.stageSelected(hunk.patch, [...model.selectedLines.indexes], model.selected.section, model.selected.path), model.selected.section === 'staged' ? 'Selected lines unstaged' : 'Selected lines staged');
   if (result !== null) clearLineSelection();
 });
+ui.addComment.addEventListener('click', () => {
+  if (!model.selectedLines?.indexes.size) return;
+  model.commentComposer = { anchor: buildCommentAnchor(), body: '' }; renderReview();
+  requestAnimationFrame(() => ui.content.querySelector('.comment-composer textarea')?.focus());
+});
 $('#clear-selection').addEventListener('click', () => { clearLineSelection(); renderReview(); });
+
+function buildCommentAnchor() {
+  const hunk = model.diff.hunks[model.selectedLines.hunkId]; const selected = [...model.selectedLines.indexes].sort((a, b) => a - b);
+  const range = parseHunkRange(hunk.header); let oldLine = range.old; let newLine = range.next; const positions = [];
+  hunk.lines.forEach((line, index) => {
+    const marker = line[0] || ' '; const position = { index, marker, oldLine: marker === '+' || marker === '\\' ? null : oldLine, newLine: marker === '-' || marker === '\\' ? null : newLine };
+    if (marker !== '+' && marker !== '\\') oldLine += 1;
+    if (marker !== '-' && marker !== '\\') newLine += 1;
+    if (selected.includes(index)) positions.push(position);
+  });
+  const markers = new Set(positions.map((item) => item.marker));
+  const side = markers.size === 1 && markers.has('-') ? 'old' : markers.size === 1 && markers.has('+') ? 'new' : model.selectionSide === 'old' || model.selectionSide === 'new' ? model.selectionSide : 'both';
+  const oldLines = positions.map((item) => item.oldLine).filter((value) => value != null); const newLines = positions.map((item) => item.newLine).filter((value) => value != null);
+  const lineValues = side === 'old' ? oldLines : newLines;
+  const bounds = (values) => values.length ? [Math.min(...values), Math.max(...values)] : [null, null];
+  const [startLine, endLine] = bounds(lineValues); const [oldStartLine, oldEndLine] = bounds(oldLines); const [newStartLine, newEndLine] = bounds(newLines);
+  return {
+    path: model.selected.path, section: model.selected.section, side,
+    startLine, endLine, oldStartLine, oldEndLine, newStartLine, newEndLine,
+    hunkId: hunk.id, hunkHeader: hunk.header, startIndex: selected[0], endIndex: selected.at(-1),
+    selectedText: selected.map((index) => hunk.lines[index].startsWith('\\') ? hunk.lines[index] : hunk.lines[index].slice(1)),
+  };
+}
+function shortCommentId(id) { return id.slice(-6); }
+function renderReviewThread(comment) {
+  return `<article class="review-thread" data-comment-id="${comment.id}"><header><strong>Comment ${shortCommentId(comment.id)}</strong><span>Open</span></header><p>${escapeHtml(comment.body)}</p><footer><button data-review-action="edit">Edit</button><button data-review-action="resolve">Resolve</button></footer></article>`;
+}
+function renderCommentComposer() {
+  return `<div class="comment-composer"><textarea rows="3" placeholder="Leave a review comment…">${escapeHtml(model.commentComposer?.body || '')}</textarea><div><button data-comment-action="cancel">Cancel</button><button data-comment-action="save" class="primary-comment">${model.commentComposer?.commentId ? 'Save comment' : 'Add to review'}</button></div></div>`;
+}
+function bindReviewEvents() {
+  const composer = ui.content.querySelector('.comment-composer');
+  if (composer) {
+    composer.querySelector('[data-comment-action="cancel"]').addEventListener('click', () => { model.commentComposer = null; renderReview(); });
+    composer.querySelector('[data-comment-action="save"]').addEventListener('click', async () => {
+      const body = composer.querySelector('textarea').value.trim(); if (!body) return showToast('Write a comment first.', true);
+      const editing = model.commentComposer.commentId;
+      const result = await unwrap(editing ? window.gitReview.editReviewComment(editing, body) : window.gitReview.addReviewComment(model.commentComposer.anchor, body));
+      if (!result) return;
+      model.review = { comments: result.comments, openCommentCount: result.openCommentCount };
+      model.commentComposer = null; clearLineSelection(); renderFiles(); renderReview();
+    });
+  }
+  ui.content.querySelectorAll('[data-review-action]').forEach((button) => button.addEventListener('click', async () => {
+    const thread = button.closest('.review-thread'); const commentId = thread.dataset.commentId; const action = button.dataset.reviewAction;
+    if (action === 'edit') {
+      const comment = allReviewComments().find((item) => item.id === commentId);
+      model.commentComposer = { anchor: comment.anchor, commentId, body: comment.body }; renderReview(); return;
+    }
+    const result = await unwrap(window.gitReview.resolveReviewComment(commentId));
+    if (result) model.review = { comments: result.comments, openCommentCount: result.openCommentCount };
+    renderFiles(); renderReview();
+  }));
+}
 
 async function toggleFileStage(file = model.selected) { if (!file || model.busy) return; await unwrap(file.section === 'staged' ? window.gitReview.unstageFile(file.path) : window.gitReview.stageFile(file.path), file.section === 'staged' ? 'File unstaged' : 'File staged'); }
 ui.fileAction.addEventListener('click', () => toggleFileStage());
@@ -339,5 +433,33 @@ async function openRemotes() { ui.modal.classList.remove('hidden'); ui.modalCont
 }
 $('#close-modal').addEventListener('click', () => ui.modal.classList.add('hidden')); ui.modal.addEventListener('pointerdown', (event) => { if (event.target === ui.modal) ui.modal.classList.add('hidden'); });
 
-window.gitReview.onChanged(renderRepo); window.gitReview.onError((error) => showToast(error.message, true));
-(async function initialize() { const state = await unwrap(window.gitReview.state()); if (state) renderRepo(state); })();
+async function focusReviewComment(commentId) {
+  let comment = allReviewComments().find((item) => item.id === commentId);
+  if (!comment) {
+    const review = await unwrap(window.gitReview.reviewState());
+    if (review) model.review = review;
+    comment = allReviewComments().find((item) => item.id === commentId);
+  }
+  if (!comment) return showToast('That comment is no longer active.', true);
+  await setView('changes');
+  const file = [...(model.repo?.changes || []), ...(model.repo?.staged || [])].find((item) => item.path === comment.anchor.path && item.section === comment.anchor.section);
+  if (!file) return showToast('The commented change is no longer available in this section.', true);
+  await selectFile(file);
+  const thread = ui.content.querySelector(`[data-comment-id="${commentId}"]`);
+  if (!thread) return showToast('The comment anchor is no longer present in the current diff.', true);
+  thread.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  thread.classList.add('focused-comment');
+  setTimeout(() => thread.classList.remove('focused-comment'), 1800);
+}
+
+window.gitReview.onChanged(renderRepo);
+window.gitReview.onReviewChanged((review) => {
+  model.review = review; if (model.repo) renderFiles(); if (model.selected && model.diff) renderReview();
+});
+window.gitReview.onFocusComment(focusReviewComment);
+window.gitReview.onError((error) => showToast(error.message, true));
+(async function initialize() {
+  const [state, review] = await Promise.all([unwrap(window.gitReview.state()), unwrap(window.gitReview.reviewState())]);
+  if (review) model.review = review;
+  if (state) renderRepo(state);
+})();

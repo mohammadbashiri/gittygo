@@ -2,6 +2,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('gitReview', {
   state: () => ipcRenderer.invoke('repo:state'),
+  reviewState: () => ipcRenderer.invoke('review:state'),
+  addReviewComment: (anchor, body) => ipcRenderer.invoke('review:add-comment', anchor, body),
+  editReviewComment: (commentId, body) => ipcRenderer.invoke('review:edit-comment', commentId, body),
+  resolveReviewComment: (commentId) => ipcRenderer.invoke('review:resolve-comment', commentId),
   diff: (filePath, section) => ipcRenderer.invoke('repo:diff', filePath, section),
   stageFile: (filePath) => ipcRenderer.invoke('repo:stage-file', filePath),
   unstageFile: (filePath) => ipcRenderer.invoke('repo:unstage-file', filePath),
@@ -25,5 +29,7 @@ contextBridge.exposeInMainWorld('gitReview', {
   switchBranch: (name) => ipcRenderer.invoke('repo:switch-branch', name),
   createBranch: (name) => ipcRenderer.invoke('repo:create-branch', name),
   onChanged: (callback) => ipcRenderer.on('repo:changed', (_event, state) => callback(state)),
+  onReviewChanged: (callback) => ipcRenderer.on('review:changed', (_event, review) => callback(review)),
+  onFocusComment: (callback) => ipcRenderer.on('review:focus-comment', (_event, commentId) => callback(commentId)),
   onError: (callback) => ipcRenderer.on('repo:error', (_event, error) => callback(error)),
 });

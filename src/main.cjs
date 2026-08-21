@@ -2,14 +2,18 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('node:path');
 const gitService = require('./git-service.cjs');
 const sessionStore = require('./session-store.cjs');
+const reviewStore = require('./review-store.cjs');
 
 let mainWindow;
 let repository;
 let sessionId;
+let repositoryIdentity;
 let refreshTimer;
 let lastStateFingerprint = '';
+let lastReviewFingerprint = '';
 let mutationQueue = Promise.resolve();
 let refreshInFlight = false;
+let focusCheckInFlight = false;
 
 function parseRepositoryArgument() {
   const separator = process.argv.indexOf('--');
@@ -38,6 +42,35 @@ async function sendState(force = false) {
   } finally {
     refreshInFlight = false;
   }
+}
+
+async function sendReview(force = false) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    const review = await reviewStore.getReviewState(repositoryIdentity);
+    const fingerprint = JSON.stringify(review);
+    if (force || fingerprint !== lastReviewFingerprint) {
+      lastReviewFingerprint = fingerprint;
+      mainWindow.webContents.send('review:changed', review);
+    }
+  } catch (error) {
+    mainWindow.webContents.send('repo:error', serializeError(error));
+  }
+}
+
+async function checkCommentFocusRequest() {
+  if (!sessionId || !mainWindow || mainWindow.isDestroyed() || focusCheckInFlight) return;
+  focusCheckInFlight = true;
+  try {
+    const request = await sessionStore.consumeCommentFocus(sessionId);
+    if (request) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show(); mainWindow.focus();
+      mainWindow.webContents.send('review:focus-comment', request.commentId);
+    }
+  } catch (error) {
+    mainWindow.webContents.send('repo:error', serializeError(error));
+  } finally { focusCheckInFlight = false; }
 }
 
 function serializeError(error) {
@@ -78,6 +111,33 @@ function mutate(action, eventDescriptor = null) {
 
 function registerIpc() {
   ipcMain.handle('repo:state', () => inspect(() => gitService.getState(repository)));
+  ipcMain.handle('review:state', () => inspect(() => reviewStore.getReviewState(repositoryIdentity)));
+  ipcMain.handle('review:add-comment', (_event, anchor, body) => inspect(async () => {
+    const state = await gitService.getState(repository);
+    const files = [...state.staged, ...state.changes];
+    if (!files.some((file) => file.path === anchor.path && file.section === anchor.section)) throw new Error('The commented file is no longer present in this change section.');
+    const result = await reviewStore.addComment(repositoryIdentity, anchor, body);
+    if (sessionId) await sessionStore.appendEvent(sessionId, { type: 'reviewCommentCreated', payload: { comment: result.comment } }, state);
+    await sendReview(true);
+    return result;
+  }));
+  ipcMain.handle('review:edit-comment', (_event, commentId, body) => inspect(async () => {
+    const result = await reviewStore.editComment(repositoryIdentity, commentId, body);
+    if (sessionId) await sessionStore.appendEvent(sessionId, { type: 'reviewCommentEdited', payload: { comment: result.comment } });
+    await sendReview(true); return result;
+  }));
+  ipcMain.handle('review:resolve-comment', (_event, commentId) => inspect(async () => {
+    const result = await reviewStore.resolveComment(repositoryIdentity, commentId, undefined, 'user-ui');
+    if (sessionId) {
+      const state = await gitService.getState(repository);
+      await sessionStore.appendEvent(sessionId, {
+        type: 'reviewCommentResolved',
+        payload: { commentId },
+      }, state);
+    }
+    await sendReview(true);
+    return result;
+  }));
   ipcMain.handle('repo:diff', (_event, filePath, section) =>
     inspect(async () => {
       const result = await gitService.getDiff(repository, filePath, section);
@@ -218,7 +278,12 @@ async function createWindow() {
   if (sessionId) {
     const session = await sessionStore.loadSession(sessionId);
     if (session.worktreeRoot !== repository) throw new Error('The supplied Git Review session belongs to a different worktree.');
-  } else sessionId = (await sessionStore.createSession(repository)).session.sessionId;
+    repositoryIdentity = session.repoIdentity;
+  } else {
+    const created = await sessionStore.createSession(repository);
+    sessionId = created.session.sessionId;
+    repositoryIdentity = created.session.repoIdentity;
+  }
   mainWindow = new BrowserWindow({
     title: `Git Review — ${path.basename(repository)}`,
     width: 1280,
@@ -245,7 +310,7 @@ async function createWindow() {
     clearInterval(refreshTimer);
   });
 
-  refreshTimer = setInterval(() => sendState(), 900);
+  refreshTimer = setInterval(() => { sendState(); sendReview(); checkCommentFocusRequest(); }, 500);
 }
 
 app.whenReady().then(async () => {

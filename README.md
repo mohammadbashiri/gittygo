@@ -10,6 +10,7 @@ Git Review opens a normal mouse-and-keyboard window for reviewing repository cha
 - Unified and side-by-side diffs
 - Independently resizable and collapsible Changes and History sidebars with persisted state
 - Stage/unstage files, hunks, and selected changed-line ranges
+- Line/range review comments exposed immediately through agent context, with lightweight resolution and agent-driven navigation
 - Discard files and hunks with native confirmation
 - Commit or amend staged changes and safely undo the last commit while preserving changes
 - Commit history with refs, comparison context, change totals, structured file inventory, and lazy read-only visual diffs
@@ -45,7 +46,15 @@ While the window remains active, any shell-capable agent can retrieve UI actions
 git-review context --session <session-id> --after <cursor> --json
 ```
 
-The response contains ordered semantic events, an authoritative snapshot, and `nextCursor`. The agent retains `nextCursor` for its next query. Repeating a cursor is safe. Run `git-review instructions` to print the protocol instructions separately.
+The response contains ordered semantic events, authoritative repository and review snapshots, and `nextCursor`. The agent retains `nextCursor` for its next query. Repeating a cursor is safe. Run `git-review instructions` to print the protocol instructions separately.
+
+Open review comments are delivered through the same context response. The user simply tells the agent when to inspect them; events are notifications rather than instructions to act. Agents can inspect or resolve comments without a harness-specific adapter:
+
+```bash
+git-review review show --session <session-id> --json
+git-review review focus --session <session-id> --comment <comment-id> --json
+git-review review resolve --session <session-id> --comment <comment-id> --json
+```
 
 `git-review .` remains shorthand for `git-review open .`. Use `--wait` only when a blocking process is explicitly desired.
 
@@ -58,5 +67,7 @@ This repository currently builds one tool: visual Git review. It is not an IDE, 
 ```bash
 npm test
 ```
+
+Resolved comments leave the active review store; Git Review is a structured feedback queue rather than a permanent discussion archive. Resolution events remain available for the lifetime of the coordination session.
 
 The renderer runs with Electron context isolation and sandboxing enabled. All repository mutations are handled in the main process, and destructive actions require user confirmation.

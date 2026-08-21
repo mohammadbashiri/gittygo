@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const git = require('../src/git-service.cjs');
 const sessions = require('../src/session-store.cjs');
+const reviews = require('../src/review-store.cjs');
 
 function command(repo, args) {
   return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
@@ -58,6 +59,28 @@ test('session is repository-bound and context uses ordered cursors', async (t) =
   const empty = await sessions.getContext(created.session.sessionId, first.nextCursor);
   assert.equal(empty.events.length, 0);
   assert.equal(empty.nextCursor, 3);
+});
+
+test('open comments are immediately authoritative context alongside their event', async (t) => {
+  const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'git-review-state-'));
+  const repo = createRepo();
+  process.env.GIT_REVIEW_STATE_DIR = stateDirectory;
+  t.after(() => {
+    delete process.env.GIT_REVIEW_STATE_DIR;
+    fs.rmSync(stateDirectory, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  const created = await sessions.createSession(repo);
+  const added = await reviews.addComment(created.session.repoIdentity, { path: 'file.txt', section: 'unstaged', side: 'new', startLine: 1, endLine: 1 }, 'Please rename this.');
+  await sessions.appendEvent(created.session.sessionId, { type: 'reviewCommentCreated', payload: { comment: added.comment } });
+  const context = await sessions.getContext(created.session.sessionId, 0);
+  assert.equal(context.events[0].type, 'reviewCommentCreated');
+  assert.equal(context.review.comments[0].id, added.comment.id);
+  assert.equal(context.review.openCommentCount, 1);
+  await sessions.requestCommentFocus(created.session.sessionId, added.comment.id);
+  assert.equal((await sessions.consumeCommentFocus(created.session.sessionId)).commentId, added.comment.id);
+  assert.equal(await sessions.consumeCommentFocus(created.session.sessionId), null);
 });
 
 test('context detects repository state changed outside recorded UI events', async (t) => {
