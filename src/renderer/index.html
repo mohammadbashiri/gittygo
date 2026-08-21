@@ -27,6 +27,7 @@
     </nav>
 
     <main id="changes-view" class="workspace view">
+      <button class="sidebar-toggle" data-sidebar="changes" aria-label="Collapse Changes sidebar" title="Collapse sidebar">‹</button>
       <aside class="sidebar">
         <div id="commit-panel" class="commit-panel">
           <div class="commit-label"><label for="commit-message">Commit message</label><label class="amend-option"><input id="amend-checkbox" type="checkbox" /> Amend</label></div>
@@ -52,6 +53,7 @@
     </main>
 
     <main id="history-view" class="history-workspace view hidden">
+      <button class="sidebar-toggle" data-sidebar="history" aria-label="Collapse History sidebar" title="Collapse sidebar">‹</button>
       <aside class="history-list-pane">
         <header class="pane-heading"><strong>Commit history</strong><span id="history-count"></span></header>
         <div id="history-list" class="history-list"></div>

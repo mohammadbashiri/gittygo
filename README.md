@@ -8,6 +8,7 @@ Git Review opens a normal mouse-and-keyboard window for reviewing repository cha
 
 - Staged and unstaged file groups
 - Unified and side-by-side diffs
+- Independently collapsible Changes and History sidebars with persisted state
 - Stage/unstage files, hunks, and selected changed-line ranges
 - Discard files and hunks with native confirmation
 - Commit or amend staged changes and safely undo the last commit while preserving changes

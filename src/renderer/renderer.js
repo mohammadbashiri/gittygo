@@ -9,10 +9,30 @@ const ui = {
 };
 
 const model = { repo: null, selected: null, diff: null, layout: 'unified', busy: false, view: 'changes', history: [], selectedCommit: null, commitDetail: null, selectedCommitFile: null, commitFileDiff: null, selectedLines: null, selectionAnchor: null };
+const sidebarState = {
+  changes: localStorage.getItem('git-review:sidebar:changes') === 'collapsed',
+  history: localStorage.getItem('git-review:sidebar:history') === 'collapsed',
+};
 const escapeHtml = (value = '') => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const basename = (filePath) => filePath.split('/').pop();
 const dirname = (filePath) => { const parts = filePath.split('/'); parts.pop(); return parts.length ? `${parts.join('/')}/` : ''; };
 const fileKey = (file) => `${file.section}:${file.path}`;
+
+function applySidebarState(view) {
+  const container = $(`#${view}-view`); const button = container.querySelector('.sidebar-toggle'); const collapsed = sidebarState[view];
+  container.classList.toggle('sidebar-collapsed', collapsed);
+  button.textContent = collapsed ? '›' : '‹';
+  button.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  button.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${view === 'changes' ? 'Changes' : 'History'} sidebar`);
+  button.setAttribute('aria-expanded', String(!collapsed));
+}
+
+document.querySelectorAll('.sidebar-toggle').forEach((button) => button.addEventListener('click', () => {
+  const view = button.dataset.sidebar; sidebarState[view] = !sidebarState[view];
+  localStorage.setItem(`git-review:sidebar:${view}`, sidebarState[view] ? 'collapsed' : 'expanded');
+  applySidebarState(view);
+}));
+applySidebarState('changes'); applySidebarState('history');
 
 function showToast(message, error = false) {
   ui.toast.textContent = message; ui.toast.className = `toast visible${error ? ' error' : ''}`;
