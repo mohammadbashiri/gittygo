@@ -12,7 +12,7 @@
   </picture>
 </p>
 
-<p align="center"><strong>Turn Git diffs into a conversation with your coding agent.</strong></p>
+<p align="center"><strong>Turn Git diffs into a conversation with your coding agent</strong></p>
 
 GittyGo gives you and your agent a shared visual workspace for reviewing local changes. Ask your agent to show you the diff in GittyGo, then comment on exact lines or ranges. Your agent reads that feedback in context, addresses it, and the diff updates live.
 
