@@ -9,7 +9,7 @@
 
 <p align="center"><strong>Turn Git diffs into a conversation with your coding agent.</strong></p>
 
-GittyGo gives you and your agent a shared visual workspace for reviewing local changes. Ask to see the diff, comment on exact lines or ranges, and your agent reads that feedback in context, addresses it, and the diff updates live.
+GittyGo gives you and your agent a shared visual workspace for reviewing local changes. Ask your agent to show you the diff in GittyGo, then comment on exact lines or ranges. Your agent reads that feedback in context, addresses it, and the diff updates live.
 
 **Agent changes code → you review → you comment → agent fixes → repeat → commit.**
 
