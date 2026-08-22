@@ -7,8 +7,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/gittygo_wordmark_darkbackground.svg">
-    <img src="assets/gittygo_wordmark_lightbackground.svg" alt="GittyGo" width="220">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/gittygo-name_darkbackground.svg">
+    <img src="assets/gittygo-name_lightbackground.svg" alt="GittyGo" width="260">
   </picture>
 </p>
 
