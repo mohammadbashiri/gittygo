@@ -1,14 +1,14 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/gittygo_logo_darkbackground.svg">
-    <img src="assets/gittygo_logo_lightbackground.svg" alt="GittyGo logo" width="160">
+    <img src="assets/gittygo_logo_lightbackground.svg" alt="GittyGo logo" width="110">
   </picture>
 </p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/gittygo-name_darkbackground.svg">
-    <img src="assets/gittygo-name_lightbackground.svg" alt="GittyGo" width="260">
+    <img src="assets/gittygo-name_lightbackground.svg" alt="GittyGo" width="115">
   </picture>
 </p>
 
