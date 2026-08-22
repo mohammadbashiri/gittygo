@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<h1 align="center">GittyGo</h1>
+<p align="center"><strong>GittyGo</strong></p>
 
 <p align="center"><strong>Turn Git diffs into a conversation with your coding agent.</strong></p>
 
