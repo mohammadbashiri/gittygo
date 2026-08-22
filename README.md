@@ -23,9 +23,9 @@ GittyGo gives you and your agent a shared visual workspace for reviewing local c
 - **Conversational** — line-level feedback becomes structured context for your agent.
 - **Live** — watch the diff update as your agent edits.
 
-## Install
+## Install (Apple Silicon macOS)
 
-The current alpha supports Apple Silicon macOS. Install or update GittyGo with:
+Install or update GittyGo with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mohammadbashiri/gittygo/main/scripts/install.sh | sh
