@@ -5,7 +5,12 @@
   </picture>
 </p>
 
-<p align="center"><strong>GittyGo</strong></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/gittygo_wordmark_darkbackground.svg">
+    <img src="assets/gittygo_wordmark_lightbackground.svg" alt="GittyGo" width="220">
+  </picture>
+</p>
 
 <p align="center"><strong>Turn Git diffs into a conversation with your coding agent.</strong></p>
 
