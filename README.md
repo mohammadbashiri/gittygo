@@ -18,7 +18,9 @@ GittyGo gives you and your agent a shared visual workspace for reviewing local c
 
 **Agent changes code → you review → you comment → agent fixes → repeat → commit.**
 
-<!-- Demo GIF/video here -->
+<p align="center">
+  <video src="assets/gittygo-demo.mp4" controls width="960"></video>
+</p>
 
 ## GittyGo is:
 
