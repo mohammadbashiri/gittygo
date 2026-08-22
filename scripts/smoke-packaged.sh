@@ -15,7 +15,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-mkdir -p "$REPO" "$TEST_HOME/.pi/agent/skills"
+mkdir -p "$REPO" "$TEST_HOME/.pi/agent" "$TEST_HOME/.claude" "$TEST_HOME/.codex"
 git -C "$REPO" init -q
 git -C "$REPO" config user.name "GittyGo Smoke Test"
 git -C "$REPO" config user.email "smoke@example.com"
@@ -26,6 +26,8 @@ git -C "$REPO" commit -qm initial
 HOME="$TEST_HOME" GITTYGO_NO_PATH_UPDATE=1 GITTYGO_ARCHIVE="$ARCHIVE" GITTYGO_CHECKSUMS="$CHECKSUMS" "$ROOT/scripts/install.sh" >/dev/null
 [ -x "$CLI" ]
 [ -f "$TEST_HOME/.pi/agent/skills/gittygo/SKILL.md" ]
+[ -f "$TEST_HOME/.claude/skills/gittygo/SKILL.md" ]
+[ -f "$TEST_HOME/.codex/skills/gittygo/SKILL.md" ]
 HOME="$TEST_HOME" "$CLI" instructions | node -e "JSON.parse(require('node:fs').readFileSync(0, 'utf8'))"
 HOME="$TEST_HOME" "$CLI" open "$REPO" --json > "$TEST_HOME/open.json"
 SESSION_ID="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).sessionId)" "$TEST_HOME/open.json")"
@@ -39,6 +41,9 @@ HOME="$TEST_HOME" "$CLI" commit-message set --session "$SESSION_ID" --message "S
 HOME="$TEST_HOME" "$CLI" commit-message clear --session "$SESSION_ID" --json >/dev/null
 HOME="$TEST_HOME" "$TEST_HOME/.local/bin/gittygo-uninstall" >/dev/null
 [ ! -e "$APP" ]
+[ ! -e "$TEST_HOME/.pi/agent/skills/gittygo" ]
+[ ! -e "$TEST_HOME/.claude/skills/gittygo" ]
+[ ! -e "$TEST_HOME/.codex/skills/gittygo" ]
 [ -d "$TEST_HOME/.gittygo" ]
 
 echo "Packaged GittyGo smoke test passed."

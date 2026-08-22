@@ -79,16 +79,16 @@ printf '%s\n' "$VERSION" > "$DATA_DIRECTORY/version"
 
 SKILL_SOURCE="$INSTALL_APP/Contents/Resources/skills/gittygo/SKILL.md"
 install_skill() {
-  root="$1"
-  [ -d "$root" ] || return 0
-  destination="$root/gittygo"
+  agent_home="$1"
+  [ -d "$agent_home" ] || return 0
+  destination="$agent_home/skills/gittygo"
   mkdir -p "$destination"
   cp "$SKILL_SOURCE" "$destination/SKILL.md"
   echo "Installed agent skill: $destination/SKILL.md"
 }
-install_skill "${PI_AGENT_HOME:-$HOME/.pi/agent}/skills"
-install_skill "${CLAUDE_HOME:-$HOME/.claude}/skills"
-install_skill "${CODEX_HOME:-$HOME/.codex}/skills"
+install_skill "${PI_AGENT_HOME:-$HOME/.pi/agent}"
+install_skill "${CLAUDE_HOME:-$HOME/.claude}"
+install_skill "${CODEX_HOME:-$HOME/.codex}"
 
 case ":$PATH:" in
   *":$BIN_DIRECTORY:"*) ;;
