@@ -1,15 +1,11 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/gittygo_logo_darkbackground.svg">
-    <img src="assets/gittygo_logo_lightbackground.svg" alt="GittyGo logo" width="110">
-  </picture>
+  <img src="assets/gittygo_logo_lightbackground.svg#gh-light-mode-only" alt="GittyGo logo" width="110">
+  <img src="assets/gittygo_logo_darkbackground.svg#gh-dark-mode-only" alt="GittyGo logo" width="110">
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/gittygo-name_darkbackground.svg">
-    <img src="assets/gittygo-name_lightbackground.svg" alt="GittyGo" width="115">
-  </picture>
+  <img src="assets/gittygo-name_lightbackground.svg#gh-light-mode-only" alt="GittyGo" width="115">
+  <img src="assets/gittygo-name_darkbackground.svg#gh-dark-mode-only" alt="GittyGo" width="115">
 </p>
 
 <p align="center"><strong>Turn Git diffs into a conversation with your coding agent</strong></p>
