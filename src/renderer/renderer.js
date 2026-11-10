@@ -210,7 +210,7 @@ function renderRepo(state) {
     }
   }
   renderFiles(); if (!model.selected) renderReview();
-  if (model.view === 'history' && oldHead && oldHead !== state.head) loadHistory();
+  if (model.view === 'history' && oldHead !== state.head) loadHistory();
   ui.updatedLabel.textContent = state.conflicted ? 'Conflicts need attention' : 'Updated just now';
   clearTimeout(renderRepo.timer); renderRepo.timer = setTimeout(() => { ui.updatedLabel.textContent = state.operation ? `${state.operation} in progress` : 'Live'; }, 1400);
 }
@@ -492,12 +492,23 @@ async function setView(view) {
   if (view === 'history' && (!model.history.length || model.historyHead !== model.repo?.head)) await loadHistory();
 }
 document.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
+let historyRequestId = 0;
 async function loadHistory() {
+  const requestId = ++historyRequestId;
+  const root = model.repo?.repo, head = model.repo?.head;
   const top = ui.historyList.scrollTop;
+  if (model.historyHead !== head) {
+    // A checkout must not leave another branch's rows/details visible while
+    // loading. Clearing selection also fences outstanding commit-detail reads.
+    model.history = []; model.selectedCommit = null; model.commitDetail = null; model.selectedCommitFile = null; model.commitFileDiff = null;
+    ui.historyCount.textContent = '';
+    ui.historyDetail.innerHTML = '<div class="empty-diff">Select a commit to inspect its changes.</div>';
+    $('#history-view').classList.remove('mobile-detail', 'mobile-file');
+  }
   if (!model.history.length) ui.historyList.innerHTML = '<div class="empty-diff">Loading history…</div>';
-  const root = model.repo?.repo;
-  const history = await unwrap(window.gittyGo.history(200)); if (!history || navigatingWorktree || root !== model.repo?.repo) return;
-  model.historyHead = model.repo?.head;
+  const history = await unwrap(window.gittyGo.history(200));
+  if (!history || requestId !== historyRequestId || navigatingWorktree || root !== model.repo?.repo || head !== model.repo?.head) return;
+  model.historyHead = head;
   model.history = layoutHistory(history); ui.historyCount.textContent = `${history.length} commits`;
   ui.historyList.innerHTML = history.length ? model.history.map((commit) => {
     const width = Math.max(1, commit.laneCount) * 16 + 12;

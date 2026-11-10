@@ -70,6 +70,10 @@ async function scenario(page, f) {
   await page.click('[data-view="history"]'); await page.waitForSelector('.commit-row');
   assert.ok(await page.$eval('#history-list', el => el.textContent.includes('linked UI proof')));
   await select(page, f.repo); assert.equal(await page.$eval('#commit-message', el => el.value), 'main draft');
+  await page.click('[data-view="history"]');
+  await page.waitForFunction(() => document.querySelectorAll('.commit-row').length === 1);
+  assert.equal(await page.$eval('.commit-subject', el => el.textContent), 'seed');
+  assert.doesNotMatch(await page.$eval('#history-list', el => el.textContent), /linked UI proof/);
   assert.equal(f.git(f.repo, 'diff', '--cached'), '');
 }
 
@@ -139,6 +143,9 @@ test('actual browser service worktrees, drafts, branch-in-use navigation, confir
     await page.click('#more-button');assert.ok(await page.$('#more-menu [data-command="fetch"]'));await page.keyboard.press('Escape');
   }
   await page.setViewport({width:320,height:800,isMobile:true,hasTouch:true});
+  // Mobile emulation can reload the page; do not click the outgoing document.
+  await page.waitForFunction(name => document.querySelector('#branch-name')?.textContent === name, {}, longBranch);
+  await page.waitForNetworkIdle({idleTime:200});
   // A delayed folder-list reply must not overwrite a newly opened modal.
   await page.setRequestInterception(true);let holdFolders=true;
   const intercept=request=>{if(holdFolders&&request.url().endsWith('/rpc')&&JSON.parse(request.postData()||'{}').method==='worktrees')return;void request.continue();};

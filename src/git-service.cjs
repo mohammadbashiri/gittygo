@@ -392,7 +392,9 @@ async function commit(repo, message, amend = false) {
 
 async function getHistory(repo, limit = 200) {
   const format = ['%H', '%h', '%P', '%an', '%ae', '%aI', '%D', '%s'].join('%x1f') + '%x1e';
-  const raw = await git(repo, ['log', '--all', '--topo-order', `--max-count=${Math.min(Math.max(limit, 1), 500)}`, `--pretty=format:${format}`]).catch(() => '');
+  // The branch picker identifies this worktree's checked-out branch (or
+  // detached HEAD). Other local/remote refs and tags must not widen its history.
+  const raw = await git(repo, ['log', '--topo-order', `--max-count=${Math.min(Math.max(limit, 1), 500)}`, `--pretty=format:${format}`, 'HEAD', '--']).catch(() => '');
   return raw.split('\x1e').map((record) => record.trim()).filter(Boolean).map((record) => {
     const [hash, shortHash, parents, author, email, date, refs, subject] = record.split('\x1f');
     return { hash, shortHash, parents: parents ? parents.split(' ') : [], author, email, date, refs: refs ? refs.split(', ').filter(Boolean) : [], subject };
