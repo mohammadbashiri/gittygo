@@ -112,6 +112,11 @@ function displayStatus(file, staged) {
   return code === ' ' || code === '?' ? 'M' : code;
 }
 
+async function getCommitIdentity(repo) {
+  const [head,branch]=await Promise.all([git(repo,['rev-parse','--short','HEAD']).catch(()=>''),git(repo,['branch','--show-current'])]);
+  return {head:head.trim()||null,branch:branch.trim()||'detached'};
+}
+
 async function getState(repo) {
   const [rawStatus, branch, head, upstream, operation] = await Promise.all([
     git(repo, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
@@ -179,17 +184,19 @@ async function hashWorktreePath(repo, filePath) {
 }
 
 async function getRepositoryMutationFingerprint(repo) {
-  const [head, branch, rawStatus, indexEntries, configuration] = await Promise.all([
+  const [head, branch, rawStatus, indexEntries, configuration, refs, operation] = await Promise.all([
     git(repo, ['rev-parse', 'HEAD']).catch(() => ''),
     git(repo, ['branch', '--show-current']),
     git(repo, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
     git(repo, ['ls-files', '--stage', '-z']),
     git(repo, ['config', '--null', '--list']),
+    git(repo, ['for-each-ref', '--format=%(refname) %(objectname) %(upstream)']),
+    getOperationState(repo),
   ]);
   const unstaged = parseStatus(rawStatus).filter((file) => file.unstaged);
   const worktreeHashes = await Promise.all(unstaged.map(async (file) => [file.path, await hashWorktreePath(repo, file.path)]));
   return crypto.createHash('sha256').update(JSON.stringify({
-    head: head.trim(), branch: branch.trim(), rawStatus, indexEntries, configuration, worktreeHashes,
+    head: head.trim(), branch: branch.trim(), rawStatus, indexEntries, configuration, refs, operation, worktreeHashes,
   })).digest('hex');
 }
 
@@ -315,7 +322,7 @@ async function discardHunk(repo, patch) {
   await applyPatch(repo, patch, ['--reverse']);
 }
 
-function buildPartialPatch(patch, selectedIndexes) {
+function buildPartialPatch(patch, selectedIndexes, reverse = false) {
   const lines = patch.split('\n');
   const hunkIndex = lines.findIndex((line) => line.startsWith('@@ '));
   if (hunkIndex < 0) throw new GitError('The selected patch has no hunk.');
@@ -346,8 +353,10 @@ function buildPartialPatch(patch, selectedIndexes) {
     for (let pair = 0; pair < length; pair += 1) {
       const deletion = removed[pair];
       const addition = added[pair];
-      if (deletion) body.push(deletion.selected ? deletion.line : ` ${deletion.line.slice(1)}`);
+      if (deletion?.selected) body.push(deletion.line);
+      else if (deletion && !reverse) body.push(` ${deletion.line.slice(1)}`);
       if (addition?.selected) body.push(addition.line);
+      else if (addition && reverse) body.push(` ${addition.line.slice(1)}`);
     }
   }
 
@@ -356,13 +365,15 @@ function buildPartialPatch(patch, selectedIndexes) {
   }
   const oldCount = body.filter((line) => line[0] !== '+').length;
   const newCount = body.filter((line) => line[0] !== '-').length;
-  const oldStart = Number(match[1]);
-  const hunkHeader = `@@ -${oldStart},${oldCount} +${oldStart},${newCount} @@${match[5] || ''}`;
+  // The unchanged side must match the source being applied to: worktree/index
+  // old-side context for staging, staged new-side context for reverse unstaging.
+  const sourceStart = Number(match[reverse ? 3 : 1]);
+  const hunkHeader = `@@ -${sourceStart},${oldCount} +${sourceStart},${newCount} @@${match[5] || ''}`;
   return [...lines.slice(0, hunkIndex), hunkHeader, ...body, ''].join('\n');
 }
 
 async function stageSelectedLines(repo, patch, selectedIndexes, section) {
-  const partial = buildPartialPatch(patch, selectedIndexes);
+  const partial = buildPartialPatch(patch, selectedIndexes, section === 'staged');
   const args = ['--cached'];
   if (section === 'staged') args.push('--reverse');
   await applyPatch(repo, partial, args);
@@ -545,14 +556,17 @@ async function undoLastCommit(repo, keepStaged = true) {
 
 async function getBranches(repo) {
   const raw = await git(repo, ['for-each-ref', '--format=%(refname:short)%09%(HEAD)%09%(upstream:short)', 'refs/heads']);
+  const worktrees = await require('./worktrees.cjs').list(repo);
   return raw.split('\n').filter((line) => line.length > 0).map((line) => {
     const [name, current = '', upstream = ''] = line.split('\t');
-    return { name, current: current.trim() === '*', upstream: upstream || null };
+    return { name, current: current.trim() === '*', upstream: upstream || null, worktree: worktrees.find((entry) => entry.branch === name)?.path || null };
   });
 }
 
 async function switchBranch(repo, name) {
   if (!name || name.startsWith('-')) throw new GitError('Invalid branch name.');
+  const occupied = (await require('./worktrees.cjs').list(repo)).find((entry) => entry.branch === name && entry.path !== repo);
+  if (occupied) throw new GitError(`This branch is already checked out at ${occupied.path}. Use View worktree instead; this directory was not changed.`);
   await git(repo, ['switch', name]);
 }
 
@@ -568,6 +582,7 @@ module.exports = {
   getRepositoryIdentity,
   parseStatus,
   getState,
+  getCommitIdentity,
   getRepositoryMutationFingerprint,
   getFileChangeFingerprint,
   getDiff,

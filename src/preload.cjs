@@ -1,38 +1,18 @@
 const { contextBridge, ipcRenderer } = require('electron');
-
-contextBridge.exposeInMainWorld('gittyGo', {
-  state: () => ipcRenderer.invoke('repo:state'),
-  reviewState: () => ipcRenderer.invoke('review:state'),
-  addReviewComment: (anchor, body) => ipcRenderer.invoke('review:add-comment', anchor, body),
-  editReviewComment: (commentId, body) => ipcRenderer.invoke('review:edit-comment', commentId, body),
-  resolveReviewComment: (commentId) => ipcRenderer.invoke('review:resolve-comment', commentId),
-  diff: (filePath, section) => ipcRenderer.invoke('repo:diff', filePath, section),
-  stageFile: (filePath) => ipcRenderer.invoke('repo:stage-file', filePath),
-  unstageFile: (filePath) => ipcRenderer.invoke('repo:unstage-file', filePath),
-  stageAll: () => ipcRenderer.invoke('repo:stage-all'),
-  unstageAll: () => ipcRenderer.invoke('repo:unstage-all'),
-  discardFile: (filePath) => ipcRenderer.invoke('repo:discard-file', filePath),
-  stageHunk: (patch, filePath) => ipcRenderer.invoke('repo:stage-hunk', patch, filePath),
-  unstageHunk: (patch, filePath) => ipcRenderer.invoke('repo:unstage-hunk', patch, filePath),
-  discardHunk: (patch, filePath) => ipcRenderer.invoke('repo:discard-hunk', patch, filePath),
-  stageSelected: (patch, indexes, section, filePath) => ipcRenderer.invoke('repo:stage-selected', patch, indexes, section, filePath),
-  commit: (message, amend) => ipcRenderer.invoke('repo:commit', message, amend),
-  history: (limit) => ipcRenderer.invoke('repo:history', limit),
-  commitDetails: (hash) => ipcRenderer.invoke('repo:commit-details', hash),
-  commitFileDiff: (hash, oldPath, filePath) => ipcRenderer.invoke('repo:commit-file-diff', hash, oldPath, filePath),
-  remotes: () => ipcRenderer.invoke('repo:remotes'),
-  branches: () => ipcRenderer.invoke('repo:branches'),
-  fetch: () => ipcRenderer.invoke('repo:fetch'),
-  pull: () => ipcRenderer.invoke('repo:pull'),
-  push: () => ipcRenderer.invoke('repo:push'),
-  undoCommit: () => ipcRenderer.invoke('repo:undo-commit'),
-  addRemote: (name, url) => ipcRenderer.invoke('repo:add-remote', name, url),
-  removeRemote: (name) => ipcRenderer.invoke('repo:remove-remote', name),
-  switchBranch: (name) => ipcRenderer.invoke('repo:switch-branch', name),
-  createBranch: (name) => ipcRenderer.invoke('repo:create-branch', name),
-  onChanged: (callback) => ipcRenderer.on('repo:changed', (_event, state) => callback(state)),
-  onReviewChanged: (callback) => ipcRenderer.on('review:changed', (_event, review) => callback(review)),
-  onFocusComment: (callback) => ipcRenderer.on('review:focus-comment', (_event, commentId) => callback(commentId)),
-  onSetCommitMessage: (callback) => ipcRenderer.on('ui:set-commit-message', (_event, message) => callback(message)),
-  onError: (callback) => ipcRenderer.on('repo:error', (_event, error) => callback(error)),
-});
+// Keep the native facade authoritative; capture mutation target before IPC.
+const channels = { state: 'repo:state', reviewState: 'review:state', addReviewComment: 'review:add-comment', editReviewComment: 'review:edit-comment', resolveReviewComment: 'review:resolve-comment', diff: 'repo:diff', stageFile: 'repo:stage-file', unstageFile: 'repo:unstage-file', stageAll: 'repo:stage-all', unstageAll: 'repo:unstage-all', discardFile: 'repo:discard-file', stageHunk: 'repo:stage-hunk', unstageHunk: 'repo:unstage-hunk', discardHunk: 'repo:discard-hunk', stageSelected: 'repo:stage-selected', commit: 'repo:commit', history: 'repo:history', commitDetails: 'repo:commit-details', commitFileDiff: 'repo:commit-file-diff', remotes: 'repo:remotes', branches: 'repo:branches', fetch: 'repo:fetch', pull: 'repo:pull', push: 'repo:push', undoCommit: 'repo:undo-commit', addRemote: 'repo:add-remote', removeRemote: 'repo:remove-remote', switchBranch: 'repo:switch-branch', createBranch: 'repo:create-branch', worktrees: 'repo:worktrees', selectWorktree: 'repo:select-worktree', createWorktree: 'repo:create-worktree', removeWorktree: 'repo:remove-worktree', initializeRepository: 'repo:initialize' };
+const reads = new Set(['state', 'reviewState', 'diff', 'history', 'commitDetails', 'commitFileDiff', 'remotes', 'branches', 'worktrees']);
+let target;
+const api = {};
+for (const [method, channel] of Object.entries(channels)) {
+  api[method] = async (...args) => {
+    const scoped = target && !['state', 'reviewState', 'worktrees', 'selectWorktree', 'initializeRepository'].includes(method);
+    const reply = await (scoped ? ipcRenderer.invoke(reads.has(method) ? 'repo:read-target' : 'repo:target', target, method, args) : ipcRenderer.invoke(channel, ...args));
+    if (reply.ok && ['state', 'selectWorktree'].includes(method)) target = reply.result.repo;
+    return reply;
+  };
+}
+for (const [name, channel] of Object.entries({ Changed: 'repo:changed', ReviewChanged: 'review:changed', FocusComment: 'review:focus-comment', SetCommitMessage: 'ui:set-commit-message', Error: 'repo:error' })) {
+  api[`on${name}`] = (callback) => ipcRenderer.on(channel, (_event, value) => callback(value));
+}
+contextBridge.exposeInMainWorld('gittyGo', api);

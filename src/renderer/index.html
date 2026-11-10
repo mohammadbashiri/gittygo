@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'" />
   <title>GittyGo</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -11,12 +11,12 @@
   <div class="app-shell">
     <header class="titlebar">
       <div class="titlebar-spacer"></div>
-      <div class="repo-identity"><strong id="repo-name">GittyGo</strong></div>
+      <div class="repo-identity"><button id="repo-name" class="repo-path" type="button" aria-label="Choose working folder" aria-haspopup="dialog" aria-expanded="false" aria-controls="worktree-popover"><span class="path-label" dir="rtl"><span dir="ltr">GittyGo</span></span></button></div>
       <div class="repository-controls">
-        <button id="branch-button" class="header-button" title="Switch or create branch"><span class="branch-icon">⑂</span><span id="branch-name">—</span></button>
-        <span id="sync-state" class="sync-state"></span>
-        <button id="fetch-button" class="icon-button" title="Fetch all remotes">↻</button>
-        <button id="more-button" class="icon-button" title="More actions">•••</button>
+        <button id="branch-button" class="header-button" title="Switch or create branch" aria-haspopup="dialog" aria-expanded="false" aria-controls="branch-popover"><span class="branch-icon">⑂</span><span id="branch-name">—</span></button>
+      </div>
+      <div class="repository-actions">
+        <button id="more-button" class="icon-button" aria-label="More actions" title="More actions">•••</button>
       </div>
     </header>
 
@@ -26,12 +26,15 @@
       <div class="live-state"><span class="live-dot"></span><span id="updated-label">Live</span></div>
     </nav>
 
+    <section id="unavailable-worktree" class="hidden" role="status"><h2>This working folder is no longer available</h2><p>It may have been removed outside GittyGo. Existing drafts are kept in this view. Choose an available working folder to continue; no branch or files will be moved.</p><button id="choose-available-worktree" class="primary-button">Choose working folder</button></section>
+    <section id="non-repository" class="hidden"><h2>This folder is not a Git repository</h2><p>Initialize it explicitly to start tracking changes. Existing files will be preserved.</p><button id="initialize-repository" class="primary-button">Initialize Repository</button></section>
     <main id="changes-view" class="workspace view">
       <button class="sidebar-toggle" data-sidebar="changes" aria-label="Collapse Changes sidebar" title="Collapse sidebar">‹</button>
       <aside class="sidebar">
         <div id="commit-panel" class="commit-panel">
           <div class="commit-label"><label for="commit-message">Commit message</label><label class="amend-option"><input id="amend-checkbox" type="checkbox" /> Amend</label></div>
           <textarea id="commit-message" rows="3" placeholder="Describe the staged changes…"></textarea>
+          <details id="commit-proposal" hidden><summary>Suggested message available</summary><pre id="commit-proposal-text"></pre><button id="use-commit-proposal" class="quiet-button">Use suggestion</button></details>
           <button id="commit-button" class="primary-button" disabled>Commit</button>
         </div>
         <div id="file-groups" class="file-groups"></div>
@@ -39,6 +42,7 @@
 
       <section class="review-pane">
         <header id="file-toolbar" class="file-toolbar hidden">
+          <button id="back-to-files" class="mobile-back quiet-button">‹ Changes</button>
           <div class="selected-file"><span id="selected-status" class="status-badge"></span><span id="selected-path"></span></div>
           <div class="toolbar-actions">
             <div class="segmented" aria-label="Diff layout">
@@ -59,6 +63,7 @@
         <div id="history-list" class="history-list"></div>
       </aside>
       <section class="history-detail-pane">
+        <button id="history-back" class="mobile-back quiet-button">‹ History</button>
         <div id="history-detail" class="content"></div>
       </section>
     </main>
@@ -69,13 +74,22 @@
     <button data-command="undo">Undo last commit…</button>
     <div class="menu-separator"></div>
     <div class="menu-label">Sync</div>
+    <div id="sync-state" class="sync-state"></div>
     <button data-command="fetch">Fetch</button><button data-command="pull">Pull…</button><button data-command="push">Push…</button>
+    <div class="menu-separator"></div>
+    <div class="menu-label">Working folders</div>
+    <button data-command="worktrees">Manage worktrees…</button>
     <div class="menu-separator"></div>
     <div class="menu-label">Remotes</div>
     <button data-command="remotes">Manage remotes…</button>
   </div>
 
-  <div id="branch-popover" class="popover branch-popover hidden">
+  <div id="worktree-popover" class="popover identity-picker hidden" role="dialog" aria-labelledby="worktree-picker-title">
+    <header><strong id="worktree-picker-title">Working folders</strong><button id="close-worktrees" aria-label="Close working folders">×</button></header>
+    <div id="worktree-picker-content"></div>
+  </div>
+
+  <div id="branch-popover" class="popover branch-popover identity-picker hidden" role="dialog" aria-label="Branches">
     <header><strong>Branches</strong><button id="close-branches">×</button></header>
     <div class="new-branch"><input id="new-branch-name" placeholder="New branch name" /><button id="create-branch">Create</button></div>
     <div id="branch-list"></div>
@@ -88,8 +102,10 @@
     </section>
   </div>
 
+  <div id="selection-tools" class="selection-tools hidden"><label><input id="line-selection-mode" type="checkbox" /> Select lines</label><label><input id="line-range-mode" type="checkbox" /> Extend range</label></div>
   <div id="selection-action" class="selection-action hidden"><span id="selection-count"></span><button id="add-comment" class="comment-selection-button">Add comment</button><button id="apply-selection"></button><button id="clear-selection">×</button></div>
   <div id="toast" class="toast" role="status"></div>
+  <script src="browser-adapter.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

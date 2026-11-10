@@ -94,14 +94,17 @@ gittygo context --session <session-id> --after <cursor> --json
 
 The response contains ordered semantic events, authoritative repository and review snapshots, and `nextCursor`. The agent retains `nextCursor` for its next query. Repeating a cursor is safe. Run `gittygo instructions` to print the protocol instructions separately.
 
+Proposed commit messages are shared between desktop and web views of the **same canonical worktree**, not sibling worktrees. `--session <id>` remains supported but targets that session's original worktree; use `--repo` for a selected linked worktree. No window has to be opened just to set/show a proposal. A proposal fills an empty editor without changing view or focus. Nonempty local drafts stay untouched; a visible suggestion offers explicit, confirmed replacement. Clearing the proposal does not erase editor drafts. Proposals expire after 30 days or a HEAD/branch change; a new window will not resurrect a pre-commit proposal. Sharing requires the updated desktop/web code and the same local GittyGo state directory. Drafts themselves remain view-local.
+
 Open review comments are delivered through the same context response. Events are notifications rather than instructions to act. Agents can inspect, focus, or resolve comments and propose a commit message without a harness-specific adapter:
 
 ```bash
 gittygo review show --session <session-id> --json
 gittygo review focus --session <session-id> --comment <comment-id> --json
 gittygo review resolve --session <session-id> --comment <comment-id> --json
-gittygo commit-message set --session <session-id> --message "Proposed message" --json
-gittygo commit-message clear --session <session-id> --json
+gittygo commit-message set --repo <exact-worktree> --message "Proposed message" --json
+gittygo commit-message show --repo <exact-worktree> --json
+gittygo commit-message clear --repo <exact-worktree> --json
 ```
 
 Resolved comments leave the active review store. GittyGo is a structured feedback queue rather than a permanent discussion archive; resolution events remain available for the lifetime of the coordination session.

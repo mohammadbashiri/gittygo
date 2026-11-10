@@ -17,9 +17,9 @@ Living checklist for the first unsigned macOS alpha and eventual public develope
 | Check | Status | Evidence / next action |
 |---|---|---|
 | Product identity is consistently GittyGo | ✅ | App, CLI, package, state directory, session prefix, docs, and tests renamed. |
-| Canonical repository extracted | ✅ | Local repository exists at `/Users/mo/Projects/gittygo` and is public at `https://github.com/mohammadbashiri/gittygo`. |
+| Canonical repository extracted | ✅ | Canonical repository is public at `https://github.com/mohammadbashiri/gittygo`. |
 | Historical timestamps shifted after working hours | ✅ | Existing product history shifted exactly six hours while preserving order and intervals. |
-| Untouched history backup exists | ✅ | `/Users/mo/Projects/agentic-ui-tools-pre-gittygo.bundle` verified as complete. |
+| Untouched history backup exists | ✅ | Local pre-extraction recovery bundle verified as complete (kept outside the repository). |
 | Canonical portable agent skill | ✅ | `skills/gittygo/SKILL.md`; explicit invocation only, normal Git commands remain the agent interface. |
 | Versioning policy | ✅ | Published first tag is `v0.1.0-alpha.1`; the revised-logo package is `0.1.0-alpha.2`. |
 | License selected and included | ✅ | MIT License, copyright © 2026 Mohammad Bashiri; package metadata declares MIT. |

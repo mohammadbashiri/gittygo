@@ -1,0 +1,109 @@
+# Private workspace service (Wave 1)
+
+The service uses the same orchestration as standalone Electron, not a raw Git-command HTTP wrapper. No Electron runtime is required to import or start it. Standalone `gittygo` commands and the desktop entrypoint remain unchanged externally.
+
+Embedded hosts can optionally supply semantic browser colors through the independent [embedded theme contract](EMBEDDED_THEME.md). This does not change RPC, visibility, worktree targeting or the native/default appearance.
+
+## Lifecycle API
+
+```js
+const { startWorkspaceService } = require('./src/workspace-service.cjs');
+const service = await startWorkspaceService({
+  port: 0,                 // caller-selected port, or 0 for an OS-assigned port
+  token: privateToken,      // >=32 URL-safe characters; server-to-server only
+  // optional: exact trusted proxy browser origins, e.g. ['https://app.example']
+  allowedOrigins: [],
+});
+// service.url, service.port, service.server
+// Authenticate every request, including health and renderer assets.
+await service.close();
+```
+
+Binding is always IPv4 loopback `127.0.0.1`; callers cannot request a public bind address. `close()` stops accepting requests, finishes in-flight HTTP work, cancels outstanding confirmation dialogs and drains queued controller mutations. Pending challenges/workspace IDs are process-local; restart means create a new workspace. Existing session journals remain in the normal GittyGo state store.
+
+Standalone launcher (no install or package.json change required):
+
+```sh
+GITTYGO_SERVICE_TOKEN="$PRIVATE_TOKEN" node bin/gittygo-service.cjs --port 0
+```
+
+The launcher prints one JSON readiness line `{service:"gittygo-workspace",version:1,url,port}` without the token. SIGINT/SIGTERM close gracefully. The token is accepted only from the environment (not an argv flag), removed from the launcher's environment before Git/hooks can inherit it, and never added to renderer content or request logs. The imported API accepts the token directly and does not mutate its caller's environment; do not otherwise export secrets into that process's child environment.
+
+## Proxy wiring
+
+- `GET /health` returns `{ok:true,result:{service:"gittygo-workspace",version:1,ready:true}}`.
+- `POST /api/workspaces`, JSON `{directory:<absolute directory>}`, returns `{ok:true,result:{workspaceId,worktreeRoot,repoIdentity,sessionId}}`. Canonical symlink/subdirectory aliases of one worktree reuse the workspace and CLI session. Linked worktrees remain separate entry workspaces, each able to view its repository family. Non-Git directories return the same descriptor shape with a `nonrepo-<sha256>` identity and `sessionId:null`; registration creates neither a Git repository nor a coordination session.
+- `GET /w/<workspaceId>/` serves the renderer. Only `index.html`, `renderer.js`, `browser-adapter.js` and `styles.css` are statically allowed beneath that prefix. The UI worker supplies the browser adapter; this backend does not modify renderer files.
+- `POST /w/<workspaceId>/rpc`, JSON `{method,args,requestId}`, invokes existing preload facade names and positional argument order. `requestId` is a UUID generated once per logical browser invocation and retained across any transport retransmission. It is mandatory for every mutation, `confirm` and consuming `uiRequests`; pure reads may omit it. Worktree paths in selection/scoped calls are membership identifiers only: the controller re-derives membership from the entry repository's Git metadata. No arbitrary-path open operation exists. Unknown methods, extra arguments/properties, invalid sections/IDs/types and unsafe paths fail closed. `history` may omit its limit; `commit` may omit its boolean amend argument. Explicit JSON `null` is not a substitute for those optional arguments. `commitFileDiff` accepts null for a missing old path.
+- `uiRequests` (no arguments) returns `{focusRequest,commitMessageRequest}`, each nullable. Focus requests are consumed once; commit-message proposals are **non-consuming worktree-scoped records**, read from the controller's selected canonical repository (not its entry session). Native/web views share the same local state root. Proposal records carry `version:1`, `proposalId`, canonical `worktreeRoot`/`repoIdentity`, `baseHead`/`baseBranch`, `message`, `requestedAt` and `expiresAt`. HEAD/branch changes or 30-day expiry invalidate them. Desktop emits its existing `ui:set-commit-message` event with the full proposal object; the browser adapter does likewise. Receivers validate the active worktree and HEAD/branch, then deduplicate per retained worktree view. They must not focus/switch views or overwrite nonempty drafts. Empty-message proposals withdraw the suggestion only. Drafts and carets remain view-local. UUID protection remains required because `uiRequests` still consumes focus requests.
+
+The parent App owns browser authorization and selection of trusted directories; never forward a browser-provided arbitrary workspace root. Proxy assets and RPC to the corresponding service path and inject `Authorization: Bearer <privateToken>` on the server. Do not forward client Authorization, change the upstream Host to the browser Host, or expose the token via JavaScript, query parameters, logs, responses, or iframe URLs. Upstream Host must be exactly `127.0.0.1:<port>` or `localhost:<port>`. Strip Origin only after the App performs its own same-origin check, or configure the exact trusted origin in `allowedOrigins`; unexpected/null/malformed origins are rejected. No CORS relaxation is supplied. Browser calls the App's same-origin proxy, never the loopback service directly. No new Tailnet route is needed.
+
+## HTTP replay safety and bounded retention
+
+Browsers/transports may retransmit an identical POST even when application code calls fetch only once. `src/rpc-idempotency.cjs` therefore synchronously reserves `(workspaceId,requestId)` **before** scheduling controller dispatch. In-flight reservations count toward all limits. Concurrent/later duplicates with the same method/arguments await or return the identical retained response; reuse with different method/arguments is rejected without dispatch. Argument object key ordering is insignificant; positional array ordering remains significant. A canonical payload SHA-256 digest binds each reservation without retaining arbitrary raw arguments. Native IPC has no requestId requirement or API change.
+
+Pure reads are `state`, `reviewState`, `diff`, `history`, `commitDetails`, `commitFileDiff`, `remotes`, `branches`, `worktrees` and validated `readTarget`. Omit IDs on snapshot/diff polling to avoid unnecessary retention. An ID-bearing read receives the same replay semantics and consumes ledger capacity. `uiRequests` is **consuming**, even when its result is null, so it requires an ID and sustained polling eventually reaches capacity.
+
+Limits are **65,536 entries across the runtime**, **32,768 entries per workspace**, and a **64 MiB shared retained-data budget**. Input sizes, entry overhead and a bounded uncertainty response are charged at reservation; completed response bytes are additionally accounted. No TTL/LRU eviction or ID reuse exists during the workspace/runtime lifetime. At capacity, new IDs fail with a clear no-operation-started capacity error. Already reserved IDs—including in-flight reservations—remain resolvable/replayable, and unkeyed reads remain available. Re-registering the same canonical worktree returns its existing workspace/ledger and cannot bypass the cap. The global limit still applies across different workspaces.
+
+If a completed operation's response would exceed the retained-data budget, the ledger preserves that ID/digest and a small stable **uncertainty/tombstone response** stating the operation may have completed. It never forgets the ID or reruns the action; new IDs then fail closed. Existing responses/challenges/results remain replayable. A replay of confirmation preparation returns the original challenge even if it has since expired or been consumed; confirmation freshness/one-use checks still reject new attempts to use an invalid challenge.
+
+Recovery is explicit, never an automatic restart or mutation retry: first refresh authoritative Git/review state and CLI context using unkeyed reads to reconcile uncertain outcomes; tell the user that capacity has been reached. A separately approved service restart creates fresh unpredictable workspace IDs, after which the App must re-register/rebind its workspace. Old workspace URLs return 404 in the new runtime, so a delayed old mutation cannot execute there. Do not transplant an uncertain request into the new workspace or generate a new ID to retry it; only a new explicit user action after reconciliation may start another mutation. This is bounded in-memory at-most-once dispatch/replay safety, **not durable exactly-once execution across process crashes**.
+
+## Confirmation protocol
+
+Confirmation-required calls return `{ok:true,confirmation:{id,title,message,detail,choices}}`, not a mutation result. Choice 0 is always Cancel. The browser must display an explicit modal, then call `confirm` with `[id,choiceIndex]`. No confirmation boolean, patch/fingerprint override or operation name can be supplied to `confirm`.
+
+Each opaque random challenge retains its own cloned operation arguments and original orchestration continuation, bound to that controller/workspace. Challenges expire after two minutes, are consumed at most once and are limited to 64 pending per workspace. Cancel returns `{ok:true,result:{cancelled:true}}`. Invalid/expired/replayed/cross-workspace challenges fail. Invalid in-range but unavailable choices consume the challenge without mutation. Shutdown cancels pending continuations.
+
+The native adapter uses the same protocol internally: native dialog choices are sent through `confirm`; it cannot invoke the underlying destructive Git operation directly. Shared controller guards re-read reviewed fingerprints **inside** mutation coordination, and also check expiration after lock acquisition. File/hunk discard guards include content/index/HEAD; amend, undo, pull, push and remote removal use repository/configuration/ref/operation fingerprints. Typed hunk/selected-line operations accept only exact current server-generated hunks for the supplied file/section; client patches cannot select a second file or inject arbitrary patch targets. Selected-line ranges may contain context plus additions/deletions, but require at least one changed line; out-of-range indexes, empty trailing lines and EOF/newline metadata are not selectable. Partial staging/unstaging preserves unselected changes, using old-side/new-side source context respectively. Paths reject traversal, Git pathspec magic, `.git` and symlink escapes.
+
+## Coordination and existing CLI protocol
+
+`src/workspace-controller.cjs` extracts the original `src/main.cjs` orchestration, event descriptors, review operations and mutation queue. `src/native-workspace-adapter.cjs` is an Electron-free, testable native-dialog adapter. `main.cjs` retains desktop window security, state/review subscriptions, visibility refresh and native UI-request behavior, but delegates every IPC facade operation to the controller.
+
+All controller mutations acquire `proper-lockfile` coordination at `<canonical gitCommonDirectory>/gittygo-mutation.lock`, including across separate desktop/service processes and linked worktrees. Preparation of repository-wide confirmation snapshots also uses that lock. Queued operations revalidate identity and patch/path scope after acquiring it. The lock is cooperative: unrelated `git`, editors, hooks or external agents do not obey it, so this is not filesystem isolation or a replacement for Git's own locks. Fingerprints detect external changes during dialogs, not an impossible atomic transaction with arbitrary external writers.
+
+Existing semantic records are appended through `session-store.cjs`; no second event database is added. CLI `gittygo context --session <returned sessionId> --after <cursor> --json` retains ordered cursor handling, authoritative snapshots/reviews and existing staging-event coalescing (`stagingChanged`). Desktop and service sessions for one worktree may have separate session IDs, as before; unrecorded mutations from another session are surfaced by existing external-state detection. Review state is worktree-identity-bound and uses the existing cross-process review lock.
+
+## Worktree-aware shared product
+
+The native preload and browser facade expose `worktrees()`, `selectWorktree(canonicalPath)`, `createWorktree(siblingFolderName, branchName, newBranchBoolean)`, `removeWorktree(canonicalPath)` and `initializeRepository()`. The shared renderer's path and branch buttons open matching **anchored, nonmodal dropdowns**. Working folders shows folder names, branch/status and Currently viewing, with the selectable full path, **Copy full path** and **Manage worktrees…** below the list. Creation/removal remain separate confirmed management dialogs (also reachable under More); navigation itself has no destructive or creation controls. Matching small SVG chevrons sit directly after each label; long paths truncate from the left, branches from the right. On phones path/More and branch occupy separate compact rows; desktop retains one row. Fetch exists only under More, not as a duplicate header icon. Upstream details remain in the picker/More. Both dropdowns close on outside click/Escape, are mutually exclusive, track their anchors on resize and report expanded state; Escape restores trigger focus. Late folder/branch replies cannot revive closed/replaced pickers. Non-repo paths use the same dropdown for full-path inspection/copy without initializing Git. Detached/locked/prunable/unavailable labels and the explicit non-repo init screen remain.
+
+Folder/branch lists prefetch using pure reads after repository state arrives and refresh in the background while visible (15-second throttle, state-change warming, and refresh on opening). Snapshots are bounded to 16 folder roots, with one pending read per list/root; they never consume mutation request IDs or set the UI busy flag. Warm openings render synchronously from the snapshot, and background completion updates only the cache, not focused rows/drafts in the open menu. Cold indicators appear only after 300 ms; fast completion/closure/root changes cannot flash or resurrect loading text. Current branch/current-folder counts use authoritative current state; other-folder status is a recent snapshot, not a transactional guarantee. Explicit branch/worktree actions invalidate metadata and management dialogs await a fresh read; all backend freshness/confirmation guards remain authoritative. Hidden App iframes/native windows do not perform periodic metadata refresh.
+
+Selection is **navigation**, not checkout. It never changes the invoking agent's directory/session/cursor. Branches checked out elsewhere offer **View worktree**; `switchBranch` refuses them with that guidance, preserving Git's protection. Normal mutations/read-diffs/history are captured against the facade's selected target before dispatch: internal `target(path,method,args)` requires an idempotency key; `readTarget(path,readMethod,args)` strictly allowlists pure reads and does not consume the ledger. Nested target/navigation/confirmation/init calls are rejected. Confirmations remain bound to their originating controller even after navigation, and show the target path.
+
+Repository-family controllers (maximum 16 retained per entry workspace) preserve the original invoking coordination session. Every mutation event includes `payload.targetWorktree` and `targetRepoIdentity`; staging coalescing never combines different targets. `context` keeps its original repo/snapshot and adds `targetWorktrees` for touched alternate roots. Alternate mutations do not incorrectly update the invoking root's event fingerprint. Child views do not create orphan coordination sessions.
+
+The renderer retains up to 16 worktree snapshots, including commit/comment drafts, line selections/anchors, diff/layout/history selections, mobile pane state and scroll positions. It refuses a 17th view rather than evicting drafts. These remain page-memory only, not crash recovery. Old asynchronous responses cannot restore another root's diff/history. Worktree dialogs replace stale list controls while loading.
+
+Creation accepts only a simple **new sibling folder name**, never an arbitrary destination path; it requires an explicit challenge, a fresh repository-family fingerprint and a non-existing destination. New branches start at selected HEAD. Existing local branches must exist and not be checked out elsewhere. Removal preserves the branch and uses no force/prune/unlock options. It rejects main/invoking/selected/dirty/locked/prunable/invalid targets, freshly rechecks family fingerprints and clean state under the common Git mutation lock, and calls Git's normal `worktree remove`.
+
+Open/cached views are additionally protected across native/service processes by private per-controller records under `<gitCommonDirectory>/gittygo-active-views/`, with PID and bounded retained roots. Selection/opening and removal share the common Git lock. A root retained by any live GittyGo view cannot be removed; close the relevant window/browser workspace (or service workspace runtime) first. The service intentionally has no release/eviction endpoint, so cached service views remain protected until that service closes. Only this controller's own record is deleted on normal close; no existing owner sessions or stale records are pruned. Dead PIDs are ignored; reused/uncertain PIDs conservatively block removal. Malformed records or more than 1,024 records fail closed. This protects GittyGo views, not arbitrary external editors/agents; Git's native safety still applies.
+
+Non-repo initialization is explicitly initiated and confirmed, with canonical directory inode/device/name-list freshness checked under a per-folder init lock. Existing files are preserved and nothing is staged/committed. After init, the same view becomes a normal repository and records `repositoryInitialized`. `gittygo open` can open a non-repo window but reports no coordination session until initialized/reopened; its JSON instruction states this explicitly. Registration alone never runs init. Test/probe callers must not use owner folders to exercise this action.
+
+## Bounds and limitations
+
+- Maximum request body: 4 MiB; at most 128 active canonical workspaces per process. Restart releases workspace/challenge state. No workspace-release RPC is added to the agreed contract.
+- Request/header timeouts apply to incoming HTTP. Git retains its existing command behavior and network/hook semantics; repositories are trusted local repositories, not a sandbox for hostile Git configuration, filters or hooks.
+- Paths resolving through symlinks outside the worktree are intentionally rejected even for a file-level diff. History/branch/remotes/review and normal file/hunk/line staging remain available.
+- The service does not retry mutations. A transport loss or post-mutation event/presentation error is uncertain: refresh state and CLI context; do not automatically repeat the operation.
+- Existing coordination sessions expire after 30 days. The service has no persistence/recovery protocol for workspace IDs and no automatic session renewal.
+- Tests use current renderer assets and disposable native Electron/browser fixtures only. No owner desktop/native session was touched. Physical Android/manual OS-dialog review remains outstanding.
+
+## Verification
+
+Current worktree-aware candidate: `npm test` **46 passed, 0 failed** (`/tmp/gittygo-worktree-full-backend.log`). `node --test test/browser-workspace.test.mjs test/worktrees.browser.test.mjs test/nonrepo-native.test.mjs` **17 passed, 0 failed** (`/tmp/gittygo-worktree-full-browser-native.log`), including actual native preload/IPC worktree and non-repo-window fixtures. The non-repo native proof stubs only OS-dialog presentation. Existing `/tmp/gittygo-native-window-review.mjs` actual-window partial-stage/commit/path smoke also passes (`/tmp/gittygo-worktree-native-legacy.log`). `git diff --check` and Node syntax checks pass. Full backend also passes with a disposable outer HOME/global-Git isolation.
+
+Full suite, with an additional disposable outer HOME/global-Git isolation:
+
+```sh
+sandbox=$(mktemp -d)
+trap 'rm -rf "$sandbox"' EXIT
+HOME="$sandbox" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 npm test
+```
+
+Fixtures create temporary HOME/state/repositories and local bare remotes only. Tests exercise auth/Host/Origin/raw paths/body limits, canonical scopes/non-Git/linked worktrees, fixed assets, strict argument/path/patch guards, one-use/cancel/replay/expiry/stale confirmations, expiry while waiting for the shared lock, browser facade capabilities and semantic events, native adapter freshness and CLI event/cursor/UI-request compatibility, local fetch/pull/push, common-Git locking across an independent controller process, and service CLI startup/shutdown without Electron. Replay tests cover concurrent duplicate commit/comment/confirmation/consuming calls, payload-ID conflicts, dropped sockets before any response bytes for commit/comment/confirm, bounded retention with stable overflow tombstones, capacity exhaustion preserving old IDs/unkeyed reads, and runtime workspace-ID isolation. Mixed context/changed-range regressions exercise real native-controller and HTTP staging/unstaging, assert exact index/worktree contents with unselected changes retained, cover shifted new-side source positions, and reject context-only, invalid/out-of-range, empty-tail and EOF-metadata selections. Focused correction evidence: `/tmp/gittygo-mixed-range-focused.log`.

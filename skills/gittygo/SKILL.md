@@ -45,8 +45,11 @@ gittygo review resolve --session <session-id> --comment <comment-id> --json
 ## Control GittyGo-only UI state
 
 ```bash
-gittygo commit-message set --session <session-id> --message "Proposed message" --json
-gittygo commit-message clear --session <session-id> --json
+gittygo commit-message set --repo <exact-worktree> --message "Proposed message" --json
+gittygo commit-message show --repo <exact-worktree> --json
+gittygo commit-message clear --repo <exact-worktree> --json
 ```
+
+Proposals are shared across updated desktop/web views of that exact worktree, using the same local state directory. They fill empty editors without changing focus/view; existing drafts remain local and require confirmation before replacement. Clear only withdraws the proposal, never an editor draft. `--session <id>` is supported but addresses the session's original worktree, not a sibling currently selected in its UI. Use `--repo` for the intended worktree; do not open another window merely to deliver a proposal. Proposals expire after a HEAD/branch change or 30 days.
 
 Use normal `git` commands for staging, unstaging, committing, branching, fetching, and other Git operations. Do not recreate Git operations through GittyGo CLI commands.

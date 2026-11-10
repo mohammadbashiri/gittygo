@@ -1,5 +1,18 @@
 # GittyGo friend-testing checklist
 
+## Developer checks
+
+Run `npm ci` and `npm test` for the backend suite. Browser/native checks use
+an externally installed Puppeteer and Chrome, plus this project's Electron:
+
+```bash
+PUPPETEER_MODULE=/absolute/path/to/puppeteer/lib/esm/puppeteer/puppeteer.js \
+  node --test --test-concurrency=1 test/*.mjs
+```
+
+Set `CHROME_PATH` when Chrome is not at its standard macOS application path.
+The browser fixtures use disposable repositories and state, never real projects.
+
 Thank you for testing the `0.1.0` alpha. Please start with a repository that is backed up or easy to recreate.
 
 ## Install

@@ -5,6 +5,7 @@ const { stateRoot } = require('./state-root.cjs');
 const gitService = require('./git-service.cjs');
 const reviewStore = require('./review-store.cjs');
 const { withFileLock } = require('./file-lock.cjs');
+const proposals = require('./commit-proposals.cjs');
 
 const MAX_EVENTS_PER_RESPONSE = 100;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -17,7 +18,6 @@ function sessionDirectory(sessionId) {
 function sessionFile(sessionId) { return path.join(sessionDirectory(sessionId), 'session.json'); }
 function eventsFile(sessionId) { return path.join(sessionDirectory(sessionId), 'events.jsonl'); }
 function focusRequestFile(sessionId) { return path.join(sessionDirectory(sessionId), 'focus-request.json'); }
-function commitMessageRequestFile(sessionId) { return path.join(sessionDirectory(sessionId), 'commit-message-request.json'); }
 function sessionLockFile(sessionId) { return path.join(sessionDirectory(sessionId), 'session.lock'); }
 
 function withSessionLock(sessionId, action) {
@@ -144,7 +144,9 @@ async function appendEvent(sessionId, event, state) {
     };
     await appendTextDurable(eventsFile(sessionId), `${JSON.stringify(record)}\n`);
     session.nextSequence = nextSequence + 1;
-    session.lastEventFingerprint = snapshot.fingerprint;
+    // An alternate-target action must neither rebind nor mask unrecorded changes
+    // in the invoking worktree's external-state detector.
+    if (!event.payload?.targetWorktree || event.payload.targetWorktree === session.worktreeRoot) session.lastEventFingerprint = snapshot.fingerprint;
     await writeJsonSecure(sessionFile(sessionId), session);
     return record;
   });
@@ -169,22 +171,14 @@ async function consumeCommentFocus(sessionId) {
 }
 
 async function requestCommitMessage(sessionId, message) {
-  const value = String(message || '');
-  if (value.length > 20000) throw new Error('Commit message is too long.');
-  await loadSession(sessionId);
-  const request = { message: value, requestedAt: new Date().toISOString() };
-  await writeJsonSecure(commitMessageRequestFile(sessionId), request);
-  return request;
+  const session = await loadSession(sessionId);
+  return proposals.writeProposal(session.worktreeRoot, message);
 }
 
-async function consumeCommitMessage(sessionId) {
-  const filePath = commitMessageRequestFile(sessionId);
-  const request = await fs.readFile(filePath, 'utf8').then(JSON.parse).catch((error) => {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  });
-  if (request) await fs.rm(filePath, { force: true });
-  return request;
+async function readCommitMessageProposal(sessionId) {
+  // Shared proposals are deliberately non-consuming.
+  const session = await loadSession(sessionId);
+  return proposals.readProposal(session.worktreeRoot);
 }
 
 async function writeTextSecure(filePath, value) {
@@ -234,7 +228,7 @@ function coalesceEvents(events) {
       continue;
     }
     const group = [];
-    while (index < events.length && stagingTypes.has(events[index].type)) {
+    while (index < events.length && stagingTypes.has(events[index].type) && (!group.length || events[index].payload.targetWorktree === group[0].payload.targetWorktree)) {
       group.push(events[index]);
       index += 1;
     }
@@ -246,6 +240,8 @@ function coalesceEvents(events) {
       actor: 'user-ui',
       type: 'stagingChanged',
       payload: {
+        targetWorktree: last.payload.targetWorktree,
+        targetRepoIdentity: last.payload.targetRepoIdentity,
         operationCount: group.length,
         paths: [...new Set(group.map((event) => event.payload.path).filter(Boolean))],
       },
@@ -277,6 +273,7 @@ async function getContext(sessionId, after = 0) {
     events,
     snapshot,
     review,
+    targetWorktrees: [...new Set(rawEvents.map((event) => event.payload?.targetWorktree).filter((root) => root && root !== session.worktreeRoot))],
     externalStateChanged: snapshot.fingerprint !== session.lastEventFingerprint,
     nextCursor,
     hasMore: allPending.length > rawEvents.length,
@@ -291,7 +288,7 @@ module.exports = {
   requestCommentFocus,
   consumeCommentFocus,
   requestCommitMessage,
-  consumeCommitMessage,
+  readCommitMessageProposal,
   getContext,
   snapshotFromState,
   instructionFor,

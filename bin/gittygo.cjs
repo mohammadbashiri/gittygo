@@ -7,7 +7,6 @@ const reviewStore = require('../src/review-store.cjs');
 
 const projectRoot = path.resolve(__dirname, '..');
 const runningWithBundledNode = process.env.ELECTRON_RUN_AS_NODE === '1';
-const electron = runningWithBundledNode ? process.execPath : require('electron');
 
 function valueAfter(args, flag) {
   const index = args.indexOf(flag);
@@ -19,15 +18,24 @@ function print(value) {
 }
 
 async function open(args) {
+  const electron = runningWithBundledNode ? process.execPath : require('electron');
   const filtered = args.filter((argument, index) => argument !== '--wait' && argument !== '--json' && args[index - 1] !== '--session');
   const repoArgument = filtered.find((argument) => !argument.startsWith('-'));
   const repo = path.resolve(repoArgument || process.cwd());
   const wait = args.includes('--wait');
-  const created = await sessionStore.createSession(repo);
+  let created;
+  try { created = await sessionStore.createSession(repo); }
+  catch (error) {
+    if (!/not a git repository/i.test(error.message)) throw error;
+    const fs = require('node:fs/promises');
+    if (!(await fs.stat(repo)).isDirectory()) throw error;
+    const root = await fs.realpath(repo);
+    created = { session: { worktreeRoot: root, sessionId: null, repoIdentity: null }, cursor: 0, snapshot: { nonRepository: true }, instruction: 'This folder is not a Git repository. The window offers explicit Initialize Repository; nothing was initialized automatically. After initialization, reopen with gittygo open to obtain an agent coordination session/cursor.' };
+  }
   const sessionId = created.session.sessionId;
   const guiEnvironment = { ...process.env };
   delete guiEnvironment.ELECTRON_RUN_AS_NODE;
-  const child = spawn(electron, [projectRoot, '--', created.session.worktreeRoot, '--session', sessionId], {
+  const child = spawn(electron, [projectRoot, '--', created.session.worktreeRoot, ...(sessionId ? ['--session', sessionId] : [])], {
     detached: !wait,
     stdio: wait ? 'inherit' : 'ignore',
     env: guiEnvironment,
@@ -49,7 +57,7 @@ async function open(args) {
 
   if (wait) {
     const code = await new Promise((resolve) => child.once('exit', (exitCode) => resolve(exitCode || 0)));
-    const context = await sessionStore.getContext(sessionId, 0);
+    const context = sessionId ? await sessionStore.getContext(sessionId, 0) : { repo: { root: created.session.worktreeRoot }, instruction: created.instruction };
     print({ status: 'closed', ...context });
     process.exit(code);
   } else child.unref();
@@ -84,12 +92,15 @@ async function review(args) {
 }
 
 async function commitMessage(args) {
-  const action = args[0]; const sessionId = valueAfter(args, '--session');
-  if (!sessionId || !['set', 'clear'].includes(action)) throw new Error('Usage: gittygo commit-message <set|clear> --session <id> [--message <text>] --json');
-  const message = action === 'clear' ? '' : valueAfter(args, '--message');
-  if (message === undefined) throw new Error('Usage: gittygo commit-message set --session <id> --message <text> --json');
-  await sessionStore.requestCommitMessage(sessionId, message);
-  print({ status: action === 'clear' ? 'commit-message-cleared' : 'commit-message-requested', sessionId, message });
+  const action=args[0], sessionId=valueAfter(args,'--session'), repo=valueAfter(args,'--repo');
+  if (!['set','clear','show'].includes(action) || Boolean(sessionId)===Boolean(repo)) throw new Error('Usage: gittygo commit-message <set|clear|show> (--repo <worktree> | --session <id>) [--message <text>] --json');
+  const directory=repo?path.resolve(repo):(await sessionStore.loadSession(sessionId)).worktreeRoot;
+  const proposals=require('../src/commit-proposals.cjs');
+  if(action==='show'){print({status:'commit-message-proposal',proposal:await proposals.readProposal(directory)});return;}
+  const message=action==='clear'?'':valueAfter(args,'--message');
+  if(message===undefined)throw new Error('A proposed commit message is required.');
+  const proposal=await proposals.writeProposal(directory,message);
+  print({status:action==='clear'?'commit-message-cleared':'commit-message-requested',sessionId,worktreeRoot:proposal.worktreeRoot,proposalId:proposal.proposalId,message});
 }
 
 function instructions() {
